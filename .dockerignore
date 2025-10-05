@@ -1,9 +1,11 @@
 __pycache__/
+.rasa/
+models/
+*.db
+*.log
 *.pyc
 *.pyo
 *.pyd
-.rasa/
-models/
-tests/
-tracker.db
 .env
+venv/
+env/
