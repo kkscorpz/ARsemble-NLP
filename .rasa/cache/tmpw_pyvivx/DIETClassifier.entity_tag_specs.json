@@ -1,0 +1,28 @@
+[
+  {
+    "tag_name": "entity",
+    "ids_to_tags": {
+      "1": "B-board_name",
+      "2": "I-board_name",
+      "3": "L-board_name",
+      "4": "U-board_name",
+      "5": "B-socket",
+      "6": "I-socket",
+      "7": "L-socket",
+      "8": "U-socket",
+      "0": "O"
+    },
+    "tags_to_ids": {
+      "B-board_name": 1,
+      "I-board_name": 2,
+      "L-board_name": 3,
+      "U-board_name": 4,
+      "B-socket": 5,
+      "I-socket": 6,
+      "L-socket": 7,
+      "U-socket": 8,
+      "O": 0
+    },
+    "num_tags": 9
+  }
+]

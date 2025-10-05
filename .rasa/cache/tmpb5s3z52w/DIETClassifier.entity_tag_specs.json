@@ -1,0 +1,44 @@
+[
+  {
+    "tag_name": "entity",
+    "ids_to_tags": {
+      "1": "B-cooler_model",
+      "2": "I-cooler_model",
+      "3": "L-cooler_model",
+      "4": "U-cooler_model",
+      "5": "B-fan_model",
+      "6": "I-fan_model",
+      "7": "L-fan_model",
+      "8": "U-fan_model",
+      "9": "B-motherboard",
+      "10": "I-motherboard",
+      "11": "L-motherboard",
+      "12": "U-motherboard",
+      "13": "B-socket",
+      "14": "I-socket",
+      "15": "L-socket",
+      "16": "U-socket",
+      "0": "O"
+    },
+    "tags_to_ids": {
+      "B-cooler_model": 1,
+      "I-cooler_model": 2,
+      "L-cooler_model": 3,
+      "U-cooler_model": 4,
+      "B-fan_model": 5,
+      "I-fan_model": 6,
+      "L-fan_model": 7,
+      "U-fan_model": 8,
+      "B-motherboard": 9,
+      "I-motherboard": 10,
+      "L-motherboard": 11,
+      "U-motherboard": 12,
+      "B-socket": 13,
+      "I-socket": 14,
+      "L-socket": 15,
+      "U-socket": 16,
+      "O": 0
+    },
+    "num_tags": 17
+  }
+]

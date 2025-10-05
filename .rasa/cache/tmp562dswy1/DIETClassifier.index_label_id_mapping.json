@@ -1,0 +1,13 @@
+{
+  "0": "compare_boards",
+  "1": "compare_fans",
+  "2": "find_motherboard",
+  "3": "goodbye",
+  "4": "greet",
+  "5": "inform",
+  "6": "nlu_fallback",
+  "7": "price_check",
+  "8": "price_check_fan",
+  "9": "request_board_details",
+  "10": "request_fan_details"
+}

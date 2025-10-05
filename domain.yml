@@ -1,0 +1,192 @@
+version: "3.1"
+
+intents:
+  - greet
+  - goodbye
+  - bot_challenge
+  - request_board_details
+  - find_motherboard
+  - compare_boards
+  - price_check
+  - nlu_fallback
+  - inform
+  - request_fan_details
+  - price_check_fan
+  - compare_fans
+  - request_cooler_details
+  - price_check_cooler
+  - compare_coolers
+  - request_cpu_details
+  - price_check_cpu
+  - compare_cpus
+  - request_gpu_details
+  - price_check_gpu
+  - compare_gpus
+  - request_psu_details # <--- Added
+  - request_psu_price # <--- Added
+  - compare_psu # <--- Added
+  - request_ram_details # <--- NEW
+  - request_ram_price # <--- NEW
+  - compare_rams
+  - request_storage_details # <--- NEW
+  - request_storage_price # <--- NEW
+  - compare_storage
+
+entities:
+  - motherboard
+  - socket
+  - fan_model
+  - cooler_model
+  - cpu_model
+  - gpu_model
+  - psu_model
+  - ram_model
+  - storage_model
+
+slots:
+  motherboard:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: motherboard
+  case_fan:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: fan_model
+  cpu_cooler:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: cooler_model
+  cpu:
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: cpu_model
+  gpu: # gpu model
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: gpu_model
+  psu_model_slot: # <--- Added a slot for PSU model for completeness
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: psu_model
+  ram: # <--- NEW slot
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: ram_model
+  storage: # <--- NEW slot
+    type: text
+    influence_conversation: true
+    mappings:
+      - type: from_entity
+        entity: storage_model
+
+responses:
+  utter_greet:
+    - text: "Hello! 👋 I can help you with motherboard, CPU, GPU, fan, cooler, and PSU details, prices, and comparisons."
+
+  utter_goodbye:
+    - text: "Goodbye! Have a nice day."
+
+  utter_iamabot:
+    - text: "I’m an AI assistant built to help you with PC component info."
+
+  utter_default:
+    - text: "Sorry, I didn’t understand that. Can you rephrase?"
+
+  utter_ask_fan_details:
+    - text: "Please specify which case fan model you want details for (e.g., COOLMOON YX120 or Arctic P12)."
+
+  utter_ask_fan_price:
+    - text: "Which case fan's price are you checking?"
+
+  utter_ask_cooler_details:
+    - text: "Please specify which CPU cooler model you want details for (e.g., Hyper 212 Black Edition or Peerless Assassin 120 SE)."
+
+  utter_ask_cooler_price:
+    - text: "Which CPU cooler's price are you checking?"
+
+  utter_ask_cpu_details:
+    - text: "Please specify which CPU model you want details for (e.g., i9-14900K or Ryzen 7 7700X)."
+
+  utter_ask_cpu_price:
+    - text: "Which CPU's price are you checking?"
+
+  utter_ask_gpu_details:
+    - text: "Please specify which GPU model you want details for (e.g., RTX 4060 or RX 9060 XT)."
+
+  utter_ask_gpu_price:
+    - text: "Which GPU's price are you checking?"
+
+  # CORRECTED PSU RESPONSES (No nested 'responses:' key)
+  utter_psu_not_found:
+    - text: "I'm sorry, I couldn't find details for that specific PSU model. Please check the spelling or try another model."
+
+  utter_ask_psu_details:
+    - text: "Please specify which PSU model you want details for (e.g., Corsair RM850x or Cougar GX-F 750W)."
+
+  utter_ask_psu_price:
+    - text: "Which PSU's price are you checking?"
+
+  utter_too_many_psus:
+    - text: "Please provide only two PSU models for a comparison (e.g., 'Compare the RM850x and the CX650')."
+
+  utter_ram_not_found:
+    - text: "I'm sorry, I couldn't find details for that specific RAM module. Please check the spelling or try another model."
+
+  utter_ask_ram_details:
+    - text: "Please specify which RAM model you want details for (e.g., Kingston FURY Beast DDR4 or HKCMEMORY HU40)."
+
+  utter_ask_ram_price:
+    - text: "Which RAM module's price are you checking?"
+
+  utter_too_many_rams:
+    - text: "Please provide only two RAM modules for a comparison (e.g., 'Compare the FURY Beast DDR4 and the HyperX FURY DDR3')."
+
+  utter_storage_not_found:
+    - text: "I'm sorry, I couldn't find details for that specific storage device. Please check the spelling or try another model."
+
+  utter_ask_storage_details:
+    - text: "Please specify which storage device you want details for (e.g., Samsung 970 EVO Plus 1TB or Seagate Barracuda 1TB)."
+
+  utter_ask_storage_price:
+    - text: "Which storage device's price are you checking?"
+
+  utter_too_many_storages:
+    - text: "Please provide only two storage devices for a comparison (e.g., 'Compare the 970 EVO Plus and the MX500')."
+
+actions:
+  - action_board_details
+  - action_find_motherboard
+  - action_compare_boards
+  - action_price_check
+  - action_fan_details
+  - action_fan_price_check
+  - action_compare_fans
+  - action_cooler_details
+  - action_cooler_price_check
+  - action_compare_coolers
+  - action_cpu_details
+  - action_cpu_price_check
+  - action_compare_cpus
+  - action_gpu_details
+  - action_gpu_price_check
+  - action_compare_gpus
+  - action_psu_details
+  - action_compare_psus
+  - action_ram_details
+  - action_compare_rams
+  - action_storage_details # <--- NEW
+  - action_compare_storages

@@ -1,0 +1,21 @@
+# endpoints.yml
+
+# Action server
+action_endpoint:
+  url: "http://localhost:5055/webhook"
+
+# Optional: Tracker store (default is in-memory, usually okay sa testing)
+tracker_store:
+  type: sql
+  dialect: "sqlite" # alternatives: postgresql, mysql
+  url: "sqlite:///tracker.db"
+  db: "rasa"
+  username: ""
+  password: ""
+# Optional: Event broker (if using RabbitMQ / Kafka)
+# event_broker:
+#   type: "pika"
+#   url: "localhost"
+#   queue: "rasa"
+#   username: "guest"
+#   password: "guest"

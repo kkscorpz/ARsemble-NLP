@@ -1,0 +1,82 @@
+{
+    "gigabyte h610m k ddr4": {
+        "name": "GIGABYTE H610M K DDR4",
+        "price": "₱3,500 (approx)",
+        "socket": "LGA 1700",
+        "chipset": "H610",
+        "formFactor": "Micro-ATX",
+        "memorySupport": "DDR4 (Max 64GB, 2 slots)",
+        "features": "1x M.2 (PCIe 3.0), 4x SATA 6Gb/s, Gigabit LAN",
+        "compatibility": "Intel 12th/13th/14th Gen Core processors. Best for non-overclockable i3/i5 CPUs."
+    },
+    "msi b450m-a pro max ii": {
+        "name": "MSI B450M-A PRO MAX II",
+        "price": "₱3,000 (approx)",
+        "socket": "AM4",
+        "chipset": "B450",
+        "formFactor": "Micro-ATX",
+        "memorySupport": "DDR4 (Max 64GB, 2 slots)",
+        "features": "1x M.2 (PCIe 3.0), 4x SATA 6Gb/s, DVI/HDMI ports",
+        "compatibility": "AMD Ryzen 1000/2000/3000/5000 series. Requires a BIOS update for Ryzen 5000 series."
+    },
+    "msi pro h610m s ddr4": {
+        "name": "MSI Pro H610M S DDR4",
+        "price": "₱3,600 (approx)",
+        "socket": "LGA 1700",
+        "chipset": "H610",
+        "formFactor": "Micro-ATX",
+        "memorySupport": "DDR4 (Max 64GB, 2 slots)",
+        "features": "1x M.2 (PCIe 3.0), 4x SATA 6Gb/s, Gigabit LAN",
+        "compatibility": "Intel 12th/13th/14th Gen Core processors. Entry-level budget board."
+    },
+    "ramsta rs-b450mp": {
+        "name": "RAMSTA RS-B450MP",
+        "price": "₱2,500 (approx)",
+        "socket": "AM4",
+        "chipset": "B450",
+        "formFactor": "Micro-ATX",
+        "memorySupport": "DDR4 (Max 64GB, 2 slots)",
+        "features": "1x M.2, 4x SATA 6Gb/s",
+        "compatibility": "Budget board for AM4 CPUs. Often lacks advanced VRM cooling for high-end Ryzen 7/9."
+    },
+    "asus prime b650-plus": {
+        "name": "ASUS PRIME B650-PLUS",
+        "price": "₱12,000 (approx)",
+        "socket": "AM5",
+        "chipset": "B650",
+        "formFactor": "ATX",
+        "memorySupport": "DDR5 (Max 128GB, 4 slots)",
+        "features": "3x M.2 (PCIe 5.0/4.0), 4x SATA 6Gb/s, 2.5Gb LAN",
+        "compatibility": "AMD Ryzen 7000 series and future AM5 CPUs. Supports faster DDR5 RAM and PCIe 5.0."
+    },
+    "asus tuf gaming b550-plus": {
+        "name": "ASUS TUF GAMING B550-PLUS",
+        "price": "₱8,500 (approx)",
+        "socket": "AM4",
+        "chipset": "B550",
+        "formFactor": "ATX",
+        "memorySupport": "DDR4 (Max 128GB, 4 slots)",
+        "features": "2x M.2 (PCIe 4.0), 6x SATA 6Gb/s, 2.5Gb LAN",
+        "compatibility": "AMD Ryzen 3000/5000 series. Excellent value board with good VRMs for Ryzen 7/9."
+    },
+    "msi pro x670-p wifi": {
+        "name": "MSI PRO X670-P WIFI",
+        "price": "₱18,000 (approx)",
+        "socket": "AM5",
+        "chipset": "X670",
+        "formFactor": "ATX",
+        "memorySupport": "DDR5 (Max 128GB, 4 slots)",
+        "features": "4x M.2 (PCIe 5.0/4.0), 6x SATA 6Gb/s, Wi-Fi 6E, 2.5G LAN",
+        "compatibility": "High-end board for AMD Ryzen 7000 series. Ideal for overclocking and multiple high-speed NVMe drives."
+    },
+    "msi mpg z790 carbon wifi": {
+        "name": "MSI MPG Z790 CARBON WIFI",
+        "price": "₱23,000 (approx)",
+        "socket": "LGA 1700",
+        "chipset": "Z790",
+        "formFactor": "ATX",
+        "memorySupport": "DDR5 (Max 128GB, 4 slots)",
+        "features": "5x M.2 (PCIe 4.0), 6x SATA 6Gb/s, Wi-Fi 6E, 2.5G LAN, robust VRM",
+        "compatibility": "High-end board for Intel 13th/14th Gen K-series CPUs. Essential for maximizing CPU overclocking potential."
+    }
+}

@@ -1,0 +1,28 @@
+[
+  {
+    "tag_name": "entity",
+    "ids_to_tags": {
+      "1": "B-motherboard",
+      "2": "I-motherboard",
+      "3": "L-motherboard",
+      "4": "U-motherboard",
+      "5": "B-socket",
+      "6": "I-socket",
+      "7": "L-socket",
+      "8": "U-socket",
+      "0": "O"
+    },
+    "tags_to_ids": {
+      "B-motherboard": 1,
+      "I-motherboard": 2,
+      "L-motherboard": 3,
+      "U-motherboard": 4,
+      "B-socket": 5,
+      "I-socket": 6,
+      "L-socket": 7,
+      "U-socket": 8,
+      "O": 0
+    },
+    "num_tags": 9
+  }
+]

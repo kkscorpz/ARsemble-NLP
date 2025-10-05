@@ -1,0 +1,279 @@
+version: "3.1"
+
+nlu:
+  # ==============================
+  # Global Intents
+  # ==============================
+  - intent: greet
+    examples: |
+      - hi
+      - hello
+      - hey there
+      - good morning
+
+  - intent: goodbye
+    examples: |
+      - bye
+      - goodbye
+      - see you later
+
+  - intent: bot_challenge
+    examples: |
+      - are you a bot?
+      - are you human?
+      - what are you?
+
+  # ==============================
+  # Motherboard Intents (Carried over)
+  # ==============================
+  - intent: find_motherboard
+    examples: |
+      - find a motherboard with socket [AM4](socket)
+      - I need a motherboard for socket [AM5](socket)
+      - any motherboard compatible with [AM4](socket)?
+      - Which motherboards support [LGA 1700](socket)?
+      - I need a motherboard
+      - find motherboard
+      - boards for sale
+      - do you have boards for [LGA 1151](socket)
+
+  - intent: inform
+    examples: |
+      - [AM5](socket)
+      - [LGA 1700](socket)
+      - [AM4](socket)
+      - I need the [AM4](socket)
+      - [B650](socket) please
+      - how about [Z790](socket)
+
+  - intent: request_board_details
+    examples: |
+      - tell me about the [ASUS PRIME B550M-K](motherboard)
+      - what are the specs of [MSI B450M A PRO MAX II](motherboard)?
+      - details of [RAMSTA RS-H311D4](motherboard)
+      - show me the full spec for [MSI B650M Gaming Plus WiFi](motherboard)
+      - I want to know more about the [MSI B760M Gaming Plus WiFi DDR4](motherboard)
+      - specs of [GIGABYTE H610M K DDR4](motherboard)
+      - show me the specs for [H610M K DDR4](motherboard)
+      - tell me about [RAMSTA RS-B450MP](motherboard)
+      - tell me about [ASUS B550M-K](motherboard)
+      - Can you give me details about this board?
+
+  - intent: compare_boards
+    examples: |
+      - compare [MSI B650M Gaming Plus WiFi](motherboard) and [MSI B760M Gaming Plus WiFi DDR4](motherboard)
+      - compare [MSI B450M A PRO MAX II](motherboard) with [ASUS PRIME B550M-K](motherboard)
+      - which is better, [RAMSTA RS-B450MP](motherboard) or [MSI PRO H610M-S DDR4](motherboard)?
+
+  - intent: price_check
+    examples: |
+      - how much is [ASUS PRIME B550M-K](motherboard)?
+      - price of [MSI B650M Gaming Plus WiFi](motherboard)
+      - what’s the cost of [RAMSTA RS-H311D4](motherboard)?
+      - what is the price of the [MSI B450M A PRO MAX II](motherboard)?
+      - [GIGABYTE H610M K DDR4](motherboard) price
+      - how much for [B450M-A PRO MAX II](motherboard)?
+      - price for that [motherboard]
+
+  # ==============================
+  # Case Fan Intents (Carried over)
+  # ==============================
+  - intent: request_fan_details
+    examples: |
+      - tell me about the [COOLMOON YX120](fan_model)
+      - specs of [Arctic P12 PWM PST](fan_model) fan
+      - what are the details for [SickleFlow 120 ARGB](fan_model)
+      - is the [Arctic P12](fan_model) a good fan?
+      - fan details for [coolmoon yx120](fan_model)
+      - show me the full specs for [p12 pwm pst](fan_model)
+
+  - intent: price_check_fan
+    examples: |
+      - how much is the [COOLMOON YX120](fan_model)?
+      - price of [Cooler Master SickleFlow 120 ARGB](fan_model)
+      - cost of [Arctic P12](fan_model)
+      - [SickleFlow 120 ARGB](fan_model) price
+
+  - intent: compare_fans
+    examples: |
+      - compare [COOLMOON YX120](fan_model) and [Arctic P12 PWM PST](fan_model)
+      - which is better, [SickleFlow ARGB](fan_model) or [P12 PWM PST](fan_model)?
+      - comparison of [Cooler Master SickleFlow](fan_model) and [COOLMOON YX120](fan_model)
+
+  # ==============================
+  # CPU Cooler Intents (Carried over)
+  # ==============================
+  - intent: request_cooler_details
+    examples: |
+      - what are the specs of [COOLMOON AOSOR S400](cooler_model)?
+      - tell me about the [Thermalright Peerless Assassin 120 SE](cooler_model)
+      - details of the [Hyper 212 Black Edition](cooler_model)
+      - is the [Deepcool LE500 MARRS](cooler_model) an AIO?
+      - does the [Peerless Assassin 120 SE](cooler_model) support AM5?
+
+  - intent: price_check_cooler
+    examples: |
+      - price of [COOLMOON AOSOR S400](cooler_model)
+      - how much is the [Cooler Master Hyper 212 Black Edition](cooler_model)?
+      - cost of [LE500 MARRS](cooler_model)
+      - [Peerless Assassin 120 SE](cooler_model) price
+
+  - intent: compare_coolers
+    examples: |
+      - compare [Hyper 212 Black Edition](cooler_model) and [COOLMOON AOSOR S400](cooler_model)
+      - which cooler is better, [LE500 MARRS](cooler_model) or [Peerless Assassin 120 SE](cooler_model)?
+      - comparison of [Thermalright Peerless Assassin 120 SE](cooler_model) and [Deepcool LE500 MARRS](cooler_model)
+
+  # ==============================
+  # CPU Intents (Carried over)
+  # ==============================
+  - intent: request_cpu_details
+    examples: |
+      - what are the specs of [Intel Core i9-14900K](cpu_model)?
+      - tell me about the [AMD Ryzen 7 5700X](cpu_model)
+      - show me the details for [Ryzen 5 5600G](cpu_model)
+      - details of the [Core i5-14600K](cpu_model)
+      - is the [i3-13100](cpu_model) a good budget CPU?
+      - tell me about [7950X](cpu_model)
+
+  - intent: price_check_cpu
+    examples: |
+      - how much is the [Intel Core i7-14700K](cpu_model)?
+      - price of [AMD Ryzen 7 7700X](cpu_model)
+      - cost of [Core i5-14500](cpu_model)
+      - [i9-14900K](cpu_model) price
+
+  - intent: compare_cpus
+    examples: |
+      - compare [Intel Core i5-14600K](cpu_model) and [AMD Ryzen 5 5600X](cpu_model)
+      - which cpu is better, [i7-13700K](cpu_model) or [Ryzen 7 7700X](cpu_model)?
+      - comparison of [Core i3-14100](cpu_model) and [Ryzen 3 3200G](cpu_model)
+      - compare [14900K](cpu_model) and [7950X](cpu_model)
+
+  # ==============================
+  # GPU Intents (Carried over)
+  # ==============================
+  - intent: request_gpu_details
+    examples: |
+      - what are the specs of [RTX 3050](gpu_model)?
+      - tell me about the [MSI RTX 4060 GAMING X](gpu_model)
+      - details of the [GTX 750 Ti](gpu_model)
+      - what is the VRAM of [RX 9060 XT 16GB](gpu_model)?
+      - tell me about the [3060](gpu_model)
+      - I want the full details for the [Gigabyte RTX 3050 EAGLE OC](gpu_model)
+
+  - intent: price_check_gpu
+    examples: |
+      - how much is the [RTX 4060](gpu_model)?
+      - price of [RX 9060 XT 8GB](gpu_model)
+      - cost of [GTX 750 Ti](gpu_model)
+      - [RTX 3060](gpu_model) price
+
+  - intent: compare_gpus
+    examples: |
+      - compare [RTX 3050](gpu_model) and [RTX 4060](gpu_model)
+      - which gpu is better, [RX 9060 XT 8GB](gpu_model) or [RTX 3060](gpu_model)?
+      - comparison of [GTX 750 Ti](gpu_model) and [RTX 3050](gpu_model)
+
+  # ==============================
+  # PSU Intents (NEW)
+  # ==============================
+  - intent: request_psu_details
+    examples: |
+      - what are the specs of the [Corsair RM850x](psu_model)
+      - tell me about the [Cooler Master MWE White 750W](psu_model)
+      - specs for the [Corsair CX650](psu_model)
+      - how powerful is the [Cougar GX-F 750W](psu_model)
+      - give me the details of [Seasonic Focus Plus Gold 550W](psu_model)
+      - [RM850x](psu_model) specs
+      - [CX650](psu_model) details
+      - [MWE White 750W](psu_model)
+      - [GX-F 750W](psu_model) details
+      - [Focus Plus Gold 550W](psu_model)
+
+  - intent: request_psu_price
+    examples: |
+      - how much is the [Corsair RM850x](psu_model)
+      - price of the [Cooler Master MWE White 750W](psu_model)
+      - [CX650](psu_model) price
+      - magkano ang [Cougar GX-F 750W](psu_model)
+
+  - intent: compare_psu
+    examples: |
+      - compare the [Corsair RM850x](psu_model) and the [Cougar GX-F 750W](psu_model)
+      - [Seasonic Focus Plus Gold 550W](psu_model) vs [Corsair CX650](psu_model)
+      - what's the difference between [RM850x](psu_model) and [MWE White 750W](psu_model)
+      - comparison ng [CX650](psu_model) at [GX-F 750W](psu_model)
+
+  # ==============================
+  # RAM Intents (NEW)
+  # ==============================
+  - intent: request_ram_details
+    examples: |
+      - what are the specs of the [Kingston FURY Beast DDR4](ram_model)
+      - tell me about the [HKCMEMORY HU40 DDR4 (16GB)](ram_model)
+      - specs for the [Kingston HyperX FURY DDR3](ram_model)
+      - what are the details of [HKC PC DDR4-3200 DIMM](ram_model)
+      - give me the details of [HKCMEMORY HU40 ddr4 (8gb)](ram_model)
+      - [FURY Beast DDR4](ram_model) specs
+      - [HU40 16GB](ram_model) details
+      - tell me about [HKC 3200 dimm](ram_model)
+
+  - intent: request_ram_price
+    examples: |
+      - how much is the [Kingston FURY Beast DDR4](ram_model)
+      - price of the [HKCMEMORY HU40 ddr4 (8gb)](ram_model)
+      - [HyperX FURY DDR3](ram_model) price
+      - magkano ang [HKC PC DDR4-3200 DIMM](ram_model)
+
+  - intent: compare_rams
+    examples: |
+      - compare the [FURY Beast DDR4](ram_model) and the [HKCMEMORY HU40 DDR4 (16GB)](ram_model)
+      - [Kingston HyperX FURY DDR3](ram_model) vs [Kingston FURY Beast DDR4](ram_model)
+      - what's the difference between [HU40 8GB](ram_model) and [HKC PC DDR4-3200 DIMM](ram_model)
+      - comparison ng [FURY Beast](ram_model) at [HU40](ram_model)
+
+  # ==============================
+  # STORAGE Intents (NEW)
+  # ==============================
+  - intent: request_storage_details
+    examples: |
+      - what are the specs of the [Samsung 970 EVO Plus 1TB](storage_model)
+      - tell me about the [Seagate Barracuda 1TB](storage_model)
+      - specs for the [Crucial MX500 500GB](storage_model)
+      - details of the [Western Digital Blue 2TB](storage_model)
+      - [970 evo plus](storage_model) details
+      - [MX500 SSD](storage_model) specs
+      - [Barracuda 1TB](storage_model)
+      - show me the details for the [Samsung 970 EVO Plus 1TB](storage_model)
+      - can you give me the specs for [WD Blue 2TB](storage_model)
+      - what is the specification of [Crucial MX500 500GB](storage_model)
+      - tell me the full details of the [Barracuda 1TB](storage_model)
+
+  - intent: request_storage_price
+    examples: |
+      - how much is the [Samsung 970 EVO Plus 1TB](storage_model)
+      - price of the [Western Digital Blue 2TB](storage_model)
+      - [MX500 500GB](storage_model) price
+      - magkano ang [Seagate Barracuda 1TB](storage_model)
+
+  - intent: compare_storage
+    examples: |
+      - compare the [Samsung 970 EVO Plus 1TB](storage_model) and the [Crucial MX500 500GB](storage_model)
+      - [Seagate Barracuda 1TB](storage_model) vs [Western Digital Blue 2TB](storage_model)
+      - what's the difference between [970 EVO Plus](storage_model) and [WD Blue 2TB](storage_model)
+      - comparison ng [Barracuda 1TB](storage_model) at [MX500 SSD](storage_model)
+
+  # ==============================
+  # Fallback
+  # ==============================
+  - intent: nlu_fallback
+    examples: |
+      - random gibberish
+      - blah blah
+      - something not related
+      - what is the weather today?
+      - I want to order a pizza
+      - tell me a joke
+      - who won the basketball game?
+      - I need tech support

@@ -1,0 +1,177 @@
+version: "3.1"
+
+rules:
+  # ==============================
+  # Basic Conversation Rules
+  # ==============================
+  - rule: Greet
+    steps:
+      - intent: greet
+      - action: utter_greet
+
+  - rule: Goodbye
+    steps:
+      - intent: goodbye
+      - action: utter_goodbye
+
+  - rule: Bot challenge
+    steps:
+      - intent: bot_challenge
+      - action: utter_iamabot
+
+  # ==============================
+  # Motherboard Rules
+  # ==============================
+  - rule: Request board details
+    steps:
+      - intent: request_board_details
+      - action: action_board_details
+
+  - rule: Find motherboard
+    steps:
+      - intent: find_motherboard
+      - action: action_find_motherboard
+
+  - rule: Compare boards
+    steps:
+      - intent: compare_boards
+      - action: action_compare_boards
+
+  - rule: Price check (Motherboard)
+    steps:
+      - intent: price_check
+      - action: action_price_check
+
+  # ==============================
+  # Case Fan Rules
+  # ==============================
+  - rule: Request fan details
+    steps:
+      - intent: request_fan_details
+      - action: action_fan_details
+
+  - rule: Fan Price check
+    steps:
+      - intent: price_check_fan
+      - action: action_fan_price_check
+
+  - rule: Compare Fans
+    steps:
+      - intent: compare_fans
+      - action: action_compare_fans
+
+  # ==============================
+  # CPU Cooler Rules
+  # ==============================
+  - rule: Request cooler details
+    steps:
+      - intent: request_cooler_details
+      - action: action_cooler_details
+
+  - rule: Cooler Price check
+    steps:
+      - intent: price_check_cooler
+      - action: action_cooler_price_check
+
+  - rule: Compare Coolers
+    steps:
+      - intent: compare_coolers
+      - action: action_compare_coolers
+
+  # ==============================
+  # CPU Rules
+  # ==============================
+  - rule: Request CPU details
+    steps:
+      - intent: request_cpu_details
+      - action: action_cpu_details
+
+  - rule: CPU Price check
+    steps:
+      - intent: price_check_cpu
+      - action: action_cpu_price_check
+
+  - rule: Compare CPUs
+    steps:
+      - intent: compare_cpus
+      - action: action_compare_cpus
+
+  # ==============================
+  # GPU Rules
+  # ==============================
+  - rule: Request GPU details
+    steps:
+      - intent: request_gpu_details
+      - action: action_gpu_details
+
+  - rule: GPU Price check
+    steps:
+      - intent: price_check_gpu
+      - action: action_gpu_price_check
+
+  - rule: Compare GPUs
+    steps:
+      - intent: compare_gpus
+      - action: action_compare_gpus
+
+  # ==============================
+  # PSU Rules (NEW)
+  # ==============================
+  - rule: Ask for PSU details
+    steps:
+      - intent: request_psu_details
+      - action: action_psu_details
+
+  - rule: Ask for PSU price
+    steps:
+      - intent: request_psu_price
+      - action: action_psu_details # Uses the same action to get details or price
+
+  - rule: Compare two PSUs
+    steps:
+      - intent: compare_psu
+      - action: action_compare_psus
+
+  # ==============================
+  # RAM Rules (NEW)
+  # ==============================
+  - rule: Ask for RAM details
+    steps:
+      - intent: request_ram_details
+      - action: action_ram_details
+
+  - rule: Ask for RAM price
+    steps:
+      - intent: request_ram_price
+      - action: action_ram_details # Uses the same action to get details or price
+
+  - rule: Compare two RAM modules
+    steps:
+      - intent: compare_rams
+      - action: action_compare_rams
+
+  # ==============================
+  # Storage Rules (NEW)
+  # ==============================
+  - rule: Ask for Storage details
+    steps:
+      - intent: request_storage_details
+      - action: action_storage_details
+
+  - rule: Ask for Storage price
+    steps:
+      - intent: request_storage_price
+      - action: action_storage_details # Uses the same action
+
+  - rule: Compare two Storage devices
+    steps:
+      - intent: compare_storage
+      - action: action_compare_storages
+
+  # ==============================
+  # Fallback
+  # ==============================
+  - rule: Fallback
+    steps:
+      - intent: nlu_fallback
+      - action: utter_default

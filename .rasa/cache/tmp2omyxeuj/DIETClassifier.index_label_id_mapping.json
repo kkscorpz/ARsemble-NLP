@@ -1,0 +1,22 @@
+{
+  "0": "compare_boards",
+  "1": "compare_coolers",
+  "2": "compare_cpus",
+  "3": "compare_fans",
+  "4": "compare_gpus",
+  "5": "find_motherboard",
+  "6": "goodbye",
+  "7": "greet",
+  "8": "inform",
+  "9": "nlu_fallback",
+  "10": "price_check",
+  "11": "price_check_cooler",
+  "12": "price_check_cpu",
+  "13": "price_check_fan",
+  "14": "price_check_gpu",
+  "15": "request_board_details",
+  "16": "request_cooler_details",
+  "17": "request_cpu_details",
+  "18": "request_fan_details",
+  "19": "request_gpu_details"
+}

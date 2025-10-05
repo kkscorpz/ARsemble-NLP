@@ -1,0 +1,36 @@
+[
+  {
+    "tag_name": "entity",
+    "ids_to_tags": {
+      "1": "B-fan_model",
+      "2": "I-fan_model",
+      "3": "L-fan_model",
+      "4": "U-fan_model",
+      "5": "B-motherboard",
+      "6": "I-motherboard",
+      "7": "L-motherboard",
+      "8": "U-motherboard",
+      "9": "B-socket",
+      "10": "I-socket",
+      "11": "L-socket",
+      "12": "U-socket",
+      "0": "O"
+    },
+    "tags_to_ids": {
+      "B-fan_model": 1,
+      "I-fan_model": 2,
+      "L-fan_model": 3,
+      "U-fan_model": 4,
+      "B-motherboard": 5,
+      "I-motherboard": 6,
+      "L-motherboard": 7,
+      "U-motherboard": 8,
+      "B-socket": 9,
+      "I-socket": 10,
+      "L-socket": 11,
+      "U-socket": 12,
+      "O": 0
+    },
+    "num_tags": 13
+  }
+]

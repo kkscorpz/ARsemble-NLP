@@ -1,0 +1,16 @@
+{
+  "0": "compare_boards",
+  "1": "compare_coolers",
+  "2": "compare_fans",
+  "3": "find_motherboard",
+  "4": "goodbye",
+  "5": "greet",
+  "6": "inform",
+  "7": "nlu_fallback",
+  "8": "price_check",
+  "9": "price_check_cooler",
+  "10": "price_check_fan",
+  "11": "request_board_details",
+  "12": "request_cooler_details",
+  "13": "request_fan_details"
+}
