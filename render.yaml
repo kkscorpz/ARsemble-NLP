@@ -1,5 +1,0 @@
-services:
-  - type: web
-    name: ARsemble-NLP
-    env: docker
-    plan: free
