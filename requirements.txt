@@ -1,5 +1,5 @@
-git+https://github.com/RasaHQ/rasa@3.4.0#egg=rasa
-git+https://github.com/RasaHQ/rasa-sdk@3.4.0#egg=rasa-sdk
+rasa==3.0.6
+rasa-sdk==3.0.6
 requests==2.31.0
 numpy==1.25.2
 scipy==1.11.1
