@@ -1,17 +1,8 @@
-# Use official Python 3.10 image
 FROM python:3.10-slim
-
-# Set working directory
 WORKDIR /app
-
-# Copy all project files
-COPY . .
-
-# Install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Expose port (Rasa default)
+COPY . .
 EXPOSE 5005
+CMD ["bash", "-c", "rasa run --enable-api --cors '*' --host 0.0.0.0 --port ${PORT:-5005}"]
 
-# Run Rasa action server or bot
-CMD ["rasa", "run", "--enable-api", "--cors", "*"]
