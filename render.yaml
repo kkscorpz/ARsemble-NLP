@@ -1,10 +1,5 @@
 services:
   - type: web
-    name: rasa-server
+    name: ARsemble-NLP
     env: docker
     plan: free
-    autoDeploy: true
-    envVars:
-      - key: PORT
-        value: 5005
-    dockerCommand: rasa run --enable-api --cors "*" --port 5005
