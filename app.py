@@ -37,14 +37,9 @@ def chat():
 def health():
     return jsonify({'status': 'healthy', 'chatbot_loaded': chatbot is not None})
 
-# Add this to help with port detection
-
 
 @app.route('/test')
 def test():
     return jsonify({'message': 'ARsemble AI is working!'})
 
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+# Remove the if __name__ block entirely - let gunicorn handle it
