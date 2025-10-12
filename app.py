@@ -1,9 +1,5 @@
 import os
-import sys
 from flask import Flask, render_template, request, jsonify
-
-# Add current directory to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from ARsemble_ai import PCChatbot
@@ -11,7 +7,6 @@ try:
     print("✓ ARsemble AI loaded successfully")
 except ImportError as e:
     print(f"✗ Error importing ARsemble_ai: {e}")
-    print("Make sure ARsemble_ai.py exists in the same directory")
     chatbot = None
 
 app = Flask(__name__)
@@ -38,8 +33,18 @@ def chat():
         return jsonify({'response': f'Sorry, there was an error: {str(e)}'})
 
 
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy', 'chatbot_loaded': chatbot is not None})
+
+# Add this to help with port detection
+
+
+@app.route('/test')
+def test():
+    return jsonify({'message': 'ARsemble AI is working!'})
+
+
 if __name__ == '__main__':
-    print("Starting ARsemble AI Chatbot...")
-    print(" Current directory:", os.getcwd())
-    print(" Open http://localhost:5000 in your browser")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
