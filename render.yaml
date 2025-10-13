@@ -3,8 +3,8 @@ services:
     name: arsemble-ai
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -c gunicorn_config.py app:app
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.12
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: |
+      export TOKENIZERS_PARALLELISM=false
+      gunicorn -c gunicorn_config.py app:app
