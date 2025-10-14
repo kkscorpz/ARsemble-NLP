@@ -710,6 +710,66 @@ class PCChatbot:
         # Default - assume compatible for other combinations
         return f"✅ LIKELY COMPATIBLE\n{comp1['name']} and {comp2['name']} should work together\n\nWhy: Standard PC components are generally compatible."
 
+    def calculate_psu_wattage(self, cpu_model, gpu_model, other_components=None):
+        """Calculate recommended PSU wattage based on components"""
+
+        # Find Components
+        cpu, cpu_score = self.find_component(cpu_model)
+        gpu, gpu_score = self.find_component(gpu_model)
+
+        if not cpu or not gpu:
+            return "I couldn't find one or both components. Please check the names."
+
+        # Extract power consumption
+        cpu_power = 0
+        gpu_power = 0
+
+        # Extract CPU power from TDP
+        cpu_tdp_match = re.findall(r'\d+', cpu.get('tdp', '0W'))
+        if cpu_tdp_match:
+            cpu_power = int(cpu_tdp_match[0])
+
+        gpu_power_match = re.findall(r'\d+', gpu.get('power', '0W'))
+        if gpu_power_match:
+            gpu_power = int(gpu_power_match[0])
+
+        # Base power for other components
+        base_power = 100  # Motherboard, RAM, storage, fans
+
+        # Calculate total power consumption
+        total_power = cpu_power + gpu_power + base_power
+
+        # Calculate recommended PSU with safety margin
+        safety_margin = total_power * 0.3  # 30% safety margin
+        recommended_psu = total_power + safety_margin
+
+        # Round up to nearest standard PSU wattage
+        standard_wattages = [450, 550, 650, 750, 850, 1000]
+        final_recommendation = min(
+            [w for w in standard_wattages if w >= recommended_psu], default=850)
+
+        response = f"""⚡ PSU Wattage Calculation for {cpu['name']} + {gpu['name']}:
+        
+        📊 Power Breakdown:
+• CPU ({cpu['name']}): {cpu_power}W
+• GPU ({gpu['name']}): {gpu_power}W  
+• Other components (mobo, RAM, storage, fans): ~100W
+• Total estimated power: {total_power}W
+
+💡 Recommended PSU:
+• Minimum: {total_power + 100}W
+• Recommended: {final_recommendation}W (with 30% safety margin)
+
+🎯 Why {final_recommendation}W?
+• Provides headroom for peak power spikes
+• Allows for future upgrades
+• More efficient operation (PSUs run best at 50-80% load)
+• Choose 80+ Bronze, Gold, or better for reliability
+
+🔧 Tip: Always choose quality PSU brands like Corsair, Seasonic, Cooler Master, etc."""
+
+        return response
+
     def generate_exact_value_response(self, user_message, component):
         """Generate EXACT VALUE ONLY based on what user asked - FIXED LOGIC ORDER"""
         user_lower = user_message.lower()
@@ -890,6 +950,26 @@ class PCChatbot:
 • "speed Kingston Fury Beast DDR4\""""
                 self.save_training_example(user_message, response)
                 return response
+
+            # BAGONG PSU WATTAGE CALCULATOR PATTERNS - IDAGDAG MO DITO
+            psu_patterns = [
+                (r'psu for (.+) and (.+)', 2),
+                (r'what psu for (.+) with (.+)', 2),
+                (r'power supply for (.+) and (.+)', 2),
+                (r'recommended psu for (.+) and (.+)', 2),
+                (r'wattage for (.+) and (.+)', 2),
+                (r'what wattage for (.+) and (.+)', 2),
+            ]
+
+            for pattern, num_components in psu_patterns:
+                match = re.search(pattern, user_lower)
+                if match:
+                    if num_components == 2:
+                        comp1 = match.group(1).strip()
+                        comp2 = match.group(2).strip()
+                        response = self.calculate_psu_wattage(comp1, comp2)
+                        self.save_training_example(user_message, response)
+                        return response
 
             # Compatibility questions
             compatibility_patterns = [
