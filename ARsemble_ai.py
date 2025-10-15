@@ -71,6 +71,16 @@ class PCChatbot:
             # ==========================
             # ========== GPUs ==========
             # ==========================
+            "integrated graphics": {
+                "name": "Integrated Graphics (from CPU)",
+                "type": "GPU",
+                "vram": "Shared system memory",
+                "clock": "Varies by CPU",
+                "power": "0W (included in CPU power)",
+                "slot": "None (integrated)",
+                "price": "₱0 (included with CPU)",
+                "compatibility": "Works with any compatible motherboard, no additional power required"
+            },
             "rtx 3050": {
                 "name": "Gigabyte RTX 3050 EAGLE OC", "type": "GPU",
                 "vram": "8GB GDDR6", "clock": "~1777 MHz (Boost)", "power": "~130 Watts",
@@ -388,6 +398,10 @@ class PCChatbot:
         # STRATEGY 2: KEYWORD MATCHING FOR COMMON COMPONENTS - FIXED MAPPINGS
         keyword_mapping = {
             # GPU - SORTED BY LENGTH (longest/most specific first)
+            "integrated graphics": "integrated graphics",
+            "integrated gpu": "integrated graphics",
+            "igpu": "integrated graphics",
+            "onboard graphics": "integrated graphics",
             "geforce rtx 3050": "rtx 3050",
             "geforce rtx 4060": "rtx 4060",
             "geforce rtx 3060": "rtx 3060",
@@ -1003,25 +1017,20 @@ class PCChatbot:
             return None
 
          # BUDGET
-        if any(word in user_lower for word in ['ultra budget', 'very cheap', 'minimum', 'basic computing', 'office pc', '15k', '15,000', '15000']):
+        if any(word in user_lower for word in ['15', '15k', '15,000', '15000', '16', '17', '18', '19']):
             return "budget"
-           # ENTRY
-        elif any(word in user_lower for word in ['15', '25', '30', '35', '25k', '30k', '35k', '15,000', '25,000', '30,000', '35,000']):
+        elif any(word in user_lower for word in ['20', '25', '30', '35', '20k', '25k', '30k', '35k', '20,000', '25,000', '30,000', '35,000']):
             return "entry"
-
-        # MID
         elif any(word in user_lower for word in ['45', '50', '55', '60', '45k', '50k', '60k', '45,000', '50,000', '55,000', '60,000']):
             return "mid"
-
-        # HIGH
-        elif any(word in user_lower for word in ['70', '80', '90', '100', '70k', '80k', '100k', '70,000', '80,000', '90,000',]):
+        elif any(word in user_lower for word in ['70', '80', '90', '100', '70k', '80k', '100k', '70,000', '80,000', '90,000', '100,000']):
             return "high"
 
         build_keywords_mapping = {
-            "budget": ['budget', 'cheap', 'low cost', 'economy', 'affordable', 'basic'],
+            "budget": ['ultra budget', 'very cheap', 'minimum', 'basic computing', 'office pc', 'budget', 'cheap', 'low cost', 'economy', 'affordable', 'basic'],
             "entry": ['entry', 'starter', 'beginner', 'gaming'],
             "mid": ['mid', 'medium', 'mid-range', 'balanced', 'all-rounder', 'mainstream', 'standard'],
-            "high": ['high', 'premium', 'high-end', 'best', 'gaming', 'pro', 'enthusiast', 'streaming', '4k']
+            "high": ['high', 'premium', 'high-end', 'best', 'pro', 'enthusiast', 'streaming', '4k']
         }
 
         build_scores = {}
@@ -1209,21 +1218,52 @@ class PCChatbot:
 
                     response += "🔧 Components (from my database):\n"
 
+                    total_price = 0
+                    component_prices = []
+
                     for comp_type, comp_name in build_info['components'].items():
                         # Get price if available
-                        comp_data, _ = self.find_component(
-                            comp_name.split(' x2')[0])
-                        price = comp_data.get('price', '') if comp_data else ''
-                        response += f"• {comp_type}: {comp_name} {price}\n"
+                        base_comp_name = comp_name.split(' x2')[0]
+                        comp_data, _ = self.find_component(base_comp_name)
 
-                    response += f"\n🎮 Performance:\n{build_info['performance']}\n"
-                    response += f"\n🔄 Upgrade Path: {build_info['upgrade_path']}\n"
+                        if comp_data and 'price' in comp_data:
+                            price_text = comp_data['price']
+                            # Extract numeric price value
+                            price_match = re.findall(r'₱([\d,]+)', price_text)
+                            if price_match:
+                                price_value = int(
+                                    price_match[0].replace(',', ''))
 
-                    # Add compatibility check
-                    compatibility = self.verify_build_compatibility(build_type)
-                    response += f"\n🔍 Compatibility: {compatibility[0]}"
+                                if ' x2' in comp_name:
+                                    price_value *= 2
+                                    price_text = f"₱{price_value:,} (x2)"
 
-                    return response
+                                total_price += price_value
+                                component_prices.append(
+                                    f"• {comp_type}: {comp_name} - {price_text}")
+
+                            else:
+                                component_prices.append(
+                                    f"• {comp_type}: {comp_name} - {price_text}")
+
+                        else:
+                            component_prices.append(
+                                f"• {comp_type}: {comp_name} - Price not available")
+
+                 # Add all component prices to response
+                response += "\n".join(component_prices)
+
+                # Add TOTAL PRICE
+                response += f"\n\n💰 **TOTAL PRICE: ₱{total_price:,}**\n"
+
+                response += f"\n🎮 Performance:\n{build_info['performance']}\n"
+                response += f"\n🔄 Upgrade Path: {build_info['upgrade_path']}\n"
+
+                # Add compatibility check
+                compatibility = self.verify_build_compatibility(build_type)
+                response += f"\n🔍 Compatibility: {compatibility[0]}"
+
+                return response
 
             # 🆕 BUILD COMPARISON
             if " vs " in user_lower or "compare" in user_lower:
