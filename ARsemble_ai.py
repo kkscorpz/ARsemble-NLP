@@ -568,9 +568,8 @@ class PCChatbot:
                 if best_score > 0.3:
                     component_key = self.component_names[best_match_idx]
                     component = self.components_db[component_key]
-                    print(
-                        f" SEMANTIC MATCH: {component['name']} (score: {best_score:.2f})")
                     return component, best_score
+
             except Exception as e:
                 print(f"Semantic search error: {e}")
 
@@ -907,6 +906,206 @@ class PCChatbot:
         # DEFAULT: Return component name if no specific attribute found
         return f"{component['name']}"
 
+    # get_build_recommendation
+
+    def get_build_recommendation(self, build_type, budget_range=None):
+        """Return PC build recommendations USING ONLY EXISTING COMPONENTS"""
+        if not build_type or build_type not in ['entry', 'mid', 'high']:
+            return None
+
+        build_presets = {"entry": {
+            "name": "🎮 Entry Level Gaming PC",
+            "budget": "₱25,000 - ₱35,000",
+            "target": "1080p Gaming, Esports, School/Work",
+            "description": "Perfect for beginners and budget gaming",
+            "components": {
+                "CPU": "AMD Ryzen 5 5600G",  # FROM YOUR DATA
+                "GPU": "Integrated Graphics (from CPU)",
+                "Motherboard": "ASUS PRIME B550M-K",  # FROM YOUR DATA
+                # FROM YOUR DATA (8GB or 16GB)
+                "RAM": "Kingston FURY Beast DDR4",
+                "Storage": "Crucial MX500 500GB",  # FROM YOUR DATA
+                "PSU": "Seasonic Focus Plus Gold 550W",  # FROM YOUR DATA
+                "Case Fan": "COOLMOON YX120"  # FROM YOUR DATA
+            },
+            "performance": "• Valorant: 100+ FPS\n• Dota 2: 80+ FPS\n• GTA V: 60 FPS (Medium)\n• Perfect for school/work",
+            "upgrade_path": "Add GPU like GTX 750 Ti or RTX 3050 later"
+        },
+
+            "mid": {
+            "name": "⚡ Mid-Range Gaming PC",
+            "budget": "₱45,000 - ₱60,000",
+            "target": "1440p Gaming, Streaming, Content Creation",
+            "description": "Great balance of performance and value",
+            "components": {
+                "CPU": "Intel Core i5-14600K",  # FROM YOUR DATA
+                "GPU": "MSI RTX 4060 GAMING X",  # FROM YOUR DATA
+                "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
+                "RAM": "HKCMEMORY HU40 DDR4 (16GB)",  # FROM YOUR DATA
+                "Storage": "Samsung 970 EVO Plus 1TB",  # FROM YOUR DATA
+                "PSU": "Corsair CX650",  # FROM YOUR DATA
+                "CPU Cooler": "Cooler Master Hyper 212 Black Edition",  # FROM YOUR DATA
+                "Case Fan": "Cooler Master SickleFlow 120 ARGB"  # FROM YOUR DATA
+            },
+            "performance": "• Cyberpunk 2077: 60+ FPS (High)\n• Streaming: Smooth 1080p60\n• AAA Games: High settings 1440p\n• Video Editing: Fast rendering",
+            "upgrade_path": "Add more storage or better cooling"
+        },
+
+            "high": {
+            "name": "🔥 High-End Gaming PC",
+            "budget": "₱70,000 - ₱100,000+",
+            "target": "4K Gaming, Professional Work, Streaming",
+            "description": "Premium performance for enthusiasts",
+            "components": {
+                "CPU": "Intel Core i7-14700K",  # FROM YOUR DATA
+                "GPU": "Sapphire RX 9060 XT 16GB",  # FROM YOUR DATA
+                "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
+                # FROM YOUR DATA (32GB total)
+                "RAM": "HKCMEMORY HU40 DDR4 (16GB) x2",
+                "Storage": "Samsung 970 EVO Plus 1TB + Western Digital Blue 2TB",  # FROM YOUR DATA
+                "PSU": "Corsair RM850x",  # FROM YOUR DATA
+                "CPU Cooler": "Deepcool LE500 MARRS",  # FROM YOUR DATA
+                "Case Fan": "Arctic P12 PWM PST"  # FROM YOUR DATA
+            },
+            "performance": "• 4K Gaming: 60+ FPS Ultra\n• Streaming: 4K capable\n• 3D Rendering: Professional grade\n• VR Ready: Excellent performance",
+            "upgrade_path": "Top-tier components as needed"
+        }
+        }
+        return build_presets.get(build_type.lower())
+
+    # suggest_build_type
+
+    def suggest_build_type(self, user_message):
+        """Auto-detect what build type user wants"""
+        user_lower = user_message.lower()
+
+        if any(word in user_lower for word in ['25', '30', '35', '25k', '30k', '35k', '25,000']):
+            return "entry"
+        elif any(word in user_lower for word in ['45', '50', '55', '60', '45k', '50k', '60k']):
+            return "mid"
+        elif any(word in user_lower for word in ['70', '80', '90', '100', '70k', '80k', '100k']):
+            return "high"
+
+        build_keywords = {
+            "entry": ['entry', 'budget', 'cheap', 'starter', 'beginner', 'basic', 'affordable', 'low cost', 'economy'],
+            "mid": ['mid', 'medium', 'mid-range', 'balanced', 'all-rounder', 'mainstream', 'standard'],
+            "high": ['high', 'premium', 'high-end', 'best', 'gaming', 'pro', 'enthusiast', 'streaming', '4k']
+        }
+
+        for build_type, keywords in build_keywords.items():
+            if any(keyword in user_lower for keyword in keywords):
+                return build_type
+
+        return None
+
+    # verify_build_compatibility
+    def verify_build_compatibility(self, build_type):
+        """Verify that recommended build components are compatible"""
+        build = self.get_build_recommendation(build_type)
+        if not build:
+            return "Build not found"
+
+        issues = []
+        components = build['components']
+
+        cpu = components.get('CPU')
+        motherboard = components.get('Motherboard')
+        if cpu and motherboard:
+            cpu_info, _ = self.find_component(cpu)
+            mobo_info, _ = self.find_component(motherboard)
+            if cpu_info and mobo_info:
+                if cpu_info.get('socket') != mobo_info.get('socket'):
+                    issues.append(
+                        f"❌ CPU {cpu_info['socket']} not compatible with motherboard {mobo_info['socket']}")
+
+        # Check Ram-MOBO compatibility
+        ram = components.get('RAM')
+        if ram and motherboard:
+            ram_info, _ = self.find_component(
+                ram.split(' x2')[0])  # Handle "x2" notation
+            mobo_info, _ = self.find_component(motherboard)
+            if ram_info and mobo_info:
+                ram_type = ram_info.get('memory_type', '')
+                mobo_ram = mobo_info.get('ram', '')
+                if ram_type not in mobo_ram:
+                    issues.append(
+                        f"❌ RAM type {ram_type} not supported by motherboard")
+
+        return issues if issues else ["✅ All components are compatible!"]
+
+    # Compare_builds
+    def compare_builds(self, build1_type, build2_type):
+        """Compare two build types"""
+        build1 = self.get_build_recommendation(build1_type)
+        build2 = self.get_build_recommendation(build2_type)
+
+        if not build1 or not build2:
+            return "Cannot compare those build types."
+
+        comparison = f"🆚 {build1['name']} vs {build2['name']}\n\n"
+        comparison += f"💰 Budget:\n• {build1['name']}: {build1['budget']}\n• {build2['name']}: {build2['budget']}\n\n"
+
+        # Target audience comparison
+        comparison += f"🎯 Best For:\n• {build1['name']}: {build1['target']}\n• {build2['name']}: {build2['target']}\n\n"
+
+        comparison += "🔧 Main Differences:\n"
+
+        # CPU Comparison
+        cpu1 = build1['components'].get('CPU', 'N/A')
+        cpu2 = build2['components'].get('CPU', 'N/A')
+        if cpu1 != cpu2:
+            comparison += f"• **CPU**: {cpu1} vs {cpu2}\n"
+
+        # GPU Comparison
+        gpu1 = build1['components'].get('GPU', 'N/A')
+        gpu2 = build2['components'].get('GPU', 'N/A')
+        if gpu1 != gpu2:
+            comparison += f"• GPU: {gpu1} vs {gpu2}\n"
+
+        # RAM Comparison
+        ram1 = build1['components'].get('RAM', 'N/A')
+        ram2 = build2['components'].get('RAM', 'N/A')
+        if ram1 != ram2:
+            comparison += f"• RAM: {ram1} vs {ram2}\n"
+
+          # Storage Comparison
+        storage1 = build1['components'].get('Storage', 'N/A')
+        storage2 = build2['components'].get('Storage', 'N/A')
+        if storage1 != storage2:
+            comparison += f"• Storage: {storage1} vs {storage2}\n"
+
+            # PSU Comparison
+        psu1 = build1['components'].get('PSU', 'N/A')
+        psu2 = build2['components'].get('PSU', 'N/A')
+        if psu1 != psu2:
+            comparison += f"• PSU: {psu1} vs {psu2}\n"
+
+          # Performance comparison
+        comparison += f"\n🎮 **Performance Summary**:\n"
+
+        if build1_type == "entry" and build2_type == "mid":
+            comparison += "• Entry: Esports games, 1080p Medium\n• **Mid**: AAA games, 1440p High, Streaming\n"
+            comparison += "• **Upgrade**: Entry → Mid adds dedicated GPU\n"
+
+        elif build1_type == "mid" and build2_type == "high":
+            comparison += "• **Mid**: Great 1440p gaming, casual streaming\n• **High**: 4K gaming, professional streaming\n"
+            comparison += "• **Upgrade**: Mid → High improves CPU & GPU\n"
+
+        elif build1_type == "entry" and build2_type == "high":
+            comparison += "• **Entry**: Basic gaming, school/work\n• **High**: Premium gaming, content creation\n"
+            comparison += "• **Upgrade**: Major performance jump\n"
+
+            # Recommendation based on use case
+        comparison += f"\n💡 **Recommendation**:\n"
+        if build1_type == "entry" and build2_type == "mid":
+            comparison += "Choose **Entry** if: Budget < ₱35K, casual gaming\nChoose **Mid** if: Budget ₱45K+, serious gaming/streaming"
+        elif build1_type == "mid" and build2_type == "high":
+            comparison += "Choose **Mid** if: Budget ₱45K-60K, great value\nChoose **High** if: Budget ₱70K+, premium experience"
+        elif build1_type == "entry" and build2_type == "high":
+            comparison += "Choose **Entry** if: First build, learning PC building\nChoose **High** if: Experienced, want best performance"
+
+        return comparison
+
     def check_previous_training(self, user_query):
         """Check if we have the exact same query in training data"""
         for example in self.training_data:
@@ -950,6 +1149,50 @@ class PCChatbot:
 • "speed Kingston Fury Beast DDR4\""""
                 self.save_training_example(user_message, response)
                 return response
+
+            # 🆕 BUILD RECOMMENDATION DETECTION
+            build_type = self.suggest_build_type(user_message)
+            if build_type:
+                build_info = self.get_build_recommendation(build_type)
+                if build_info:
+                    response = f"🖥️ {build_info['name']}\n\n"
+                    response += f"💰 Budget: {build_info['budget']}\n"
+                    response += f"🎯 Perfect For: {build_info['target']}\n"
+                    response += f"📝 Description: {build_info['description']}\n\n"
+
+                    response += "🔧 Components (from my database):\n"
+
+                    for comp_type, comp_name in build_info['components'].items():
+                        # Get price if available
+                        comp_data, _ = self.find_component(
+                            comp_name.split(' x2')[0])
+                        price = comp_data.get('price', '') if comp_data else ''
+                        response += f"• {comp_type}: {comp_name} {price}\n"
+
+                    response += f"\n🎮 Performance:\n{build_info['performance']}\n"
+                    response += f"\n🔄 Upgrade Path: {build_info['upgrade_path']}\n"
+
+                    # Add compatibility check
+                    compatibility = self.verify_build_compatibility(build_type)
+                    response += f"\n🔍 Compatibility: {compatibility[0]}"
+
+                    return response
+
+            # 🆕 BUILD COMPARISON
+            if " vs " in user_lower or "compare" in user_lower:
+                if "entry" in user_lower and "mid" in user_lower:
+                    return self.compare_builds("entry", "mid")
+                elif "mid" in user_lower and "high" in user_lower:
+                    return self.compare_builds("mid", "high")
+                elif "entry" in user_lower and "high" in user_lower:
+                    return self.compare_builds("entry", "high")
+
+            # 🆕 COMPATIBILITY CHECK FOR SPECIFIC BUILD
+            if "compatible" in user_lower and any(build in user_lower for build in ['entry', 'mid', 'high']):
+                for build in ['entry', 'mid', 'high']:
+                    if build in user_lower:
+                        issues = self.verify_build_compatibility(build)
+                        return f"🔍 {build.upper()} Build Compatibility:\n" + "\n".join(issues)
 
             # BAGONG PSU WATTAGE CALCULATOR PATTERNS - IDAGDAG MO DITO
             psu_patterns = [
