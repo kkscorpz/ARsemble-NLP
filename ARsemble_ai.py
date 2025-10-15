@@ -1133,12 +1133,12 @@ class PCChatbot:
             comparison += "• **Upgrade**: Entry → Mid adds dedicated GPU\n"
 
         elif build1_type == "mid" and build2_type == "high":
-            comparison += "• **Mid**: Great 1440p gaming, casual streaming\n• **High**: 4K gaming, professional streaming\n"
-            comparison += "• **Upgrade**: Mid → High improves CPU & GPU\n"
+            comparison += "• Mid: Great 1440p gaming, casual streaming\n• **High**: 4K gaming, professional streaming\n"
+            comparison += "• Upgrade: Mid → High improves CPU & GPU\n"
 
         elif build1_type == "entry" and build2_type == "high":
-            comparison += "• **Entry**: Basic gaming, school/work\n• **High**: Premium gaming, content creation\n"
-            comparison += "• **Upgrade**: Major performance jump\n"
+            comparison += "• Entry: Basic gaming, school/work\n• **High**: Premium gaming, content creation\n"
+            comparison += "• Upgrade: Major performance jump\n"
 
         comparison += f"\n💡 **Recommendation**:\n"
         if build1_type == "entry" and build2_type == "mid":
@@ -1171,9 +1171,27 @@ class PCChatbot:
                 print(f"Using training data response for: {user_message}")
                 return previous_response
 
+            vague_queries = ['capacity', 'price', 'specs', 'speed', 'tdp', 'wattage',
+                             'vram', 'clock', 'cores', 'socket', 'chipset', 'compatibility']
+            component_brands = ['kingston', 'asus', 'msi', 'gigabyte', 'corsair', 'seagate',
+                                'samsung', 'intel', 'amd', 'nvidia', 'cooler', 'thermalright']
+
+            words = user_lower.split()
+            if len(words) == 2:
+                has_attribute = any(
+                    attr in user_lower for attr in vague_queries)
+                has_brand = any(
+                    brand in user_lower for brand in component_brands)
+
+                if has_attribute and has_brand:
+                    response = "Can you be more specific? Please provide the complete component name."
+                    self.save_training_example(user_message, response)
+                    return response
+
             # Greeting
             if any(word in user_lower for word in ['hi', 'hello', 'hey']):
-                response = """Hello! I'm your PC Expert AI. Ask me about:"""
+                response = """Hello! I'm your PC Expert AI. 
+                Please type a question about PC components!"""
                 self.save_training_example(user_message, response)
                 return response
 
@@ -1250,7 +1268,7 @@ class PCChatbot:
                             component_prices.append(
                                 f"• {comp_type}: {comp_name} - Price not available")
 
-                 # Add all component prices to response
+                    # Add all component prices to response
                 response += "\n".join(component_prices)
 
                 # Add TOTAL PRICE
@@ -1327,8 +1345,20 @@ class PCChatbot:
 
             if component and confidence > 0.3:
                 # Generate EXACT VALUE response based on what user asked
+                if word_count < 2 and confidence < 0.7:
+                    response = "Can you be more specific? Please provide the complete component name."
+
+                    self.save_training_example(user_message, response)
+                    return response
+
                 response = self.generate_exact_value_response(
                     user_message, component)
+                self.save_training_example(user_message, response)
+                return response
+
+            elif component and confidence > 0.2:
+
+                response = "Can you be more specific? Please provide the complete component name."
                 self.save_training_example(user_message, response)
                 return response
 
@@ -1339,7 +1369,7 @@ class PCChatbot:
                 return response
 
             # Default response
-            response = "I'm not sure about that. Try asking about component specifications, compatibility, or prices. Type 'help' for examples."
+            response = "I'm not sure about that. Try asking about component specifications, compatibility, or prices. Type 'help' for examples. Please provide the complete component name."
             self.save_training_example(user_message, response)
             return response
 
