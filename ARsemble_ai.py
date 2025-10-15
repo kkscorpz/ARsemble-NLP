@@ -335,7 +335,7 @@ class PCChatbot:
             },
 
             # ===============================
-            # ========== Case Fans ==========
+            # ========== Case Fans ========== hindi na kasama sa data
             # ===============================
             "coolmoon yx120": {
                 "name": "COOLMOON YX120", "type": "Case Fan", "price": "₱250",
@@ -388,19 +388,19 @@ class PCChatbot:
         # STRATEGY 2: KEYWORD MATCHING FOR COMMON COMPONENTS - FIXED MAPPINGS
         keyword_mapping = {
             # GPU - SORTED BY LENGTH (longest/most specific first)
-            "geforce rtx 4060": "rtx 4060",
             "geforce rtx 3050": "rtx 3050",
+            "geforce rtx 4060": "rtx 4060",
             "geforce rtx 3060": "rtx 3060",
             "geforce gtx 750 ti": "gtx 750 ti",
             "radeon rx 9060 xt": "rx 9060 xt 8gb",
             "radeon rx 9060": "rx 9060 xt 8gb",
-            "rtx 4060": "rtx 4060",
             "rtx 3050": "rtx 3050",
+            "rtx 4060": "rtx 4060",
             "rtx 3060": "rtx 3060",
             "rx 9060 xt": "rx 9060 xt 8gb",
             "gtx 750 ti": "gtx 750 ti",
-            "4060": "rtx 4060",
             "3050": "rtx 3050",
+            "4060": "rtx 4060",
             "3060": "rtx 3060",
             "rx 9060": "rx 9060 xt 8gb",
             "750 ti": "gtx 750 ti",
@@ -573,7 +573,6 @@ class PCChatbot:
             except Exception as e:
                 print(f"Semantic search error: {e}")
 
-        print("NO MATCH FOUND")
         return None, 0.0
 
     def check_compatibility(self, component1_name, component2_name):
@@ -910,66 +909,85 @@ class PCChatbot:
 
     def get_build_recommendation(self, build_type, budget_range=None):
         """Return PC build recommendations USING ONLY EXISTING COMPONENTS"""
-        if not build_type or build_type not in ['entry', 'mid', 'high']:
+        if not build_type or build_type not in ['budget', 'entry', 'mid', 'high']:
             return None
 
-        build_presets = {"entry": {
-            "name": "🎮 Entry Level Gaming PC",
-            "budget": "₱25,000 - ₱35,000",
-            "target": "1080p Gaming, Esports, School/Work",
-            "description": "Perfect for beginners and budget gaming",
-            "components": {
-                "CPU": "AMD Ryzen 5 5600G",  # FROM YOUR DATA
-                "GPU": "Integrated Graphics (from CPU)",
-                "Motherboard": "ASUS PRIME B550M-K",  # FROM YOUR DATA
-                # FROM YOUR DATA (8GB or 16GB)
-                "RAM": "Kingston FURY Beast DDR4",
-                "Storage": "Crucial MX500 500GB",  # FROM YOUR DATA
-                "PSU": "Seasonic Focus Plus Gold 550W",  # FROM YOUR DATA
-                "Case Fan": "COOLMOON YX120"  # FROM YOUR DATA
+        build_presets = {
+            "budget": {
+                "name": "💸 Ultra Budget PC",
+                "budget": "₱15,000 - ₱20,000",
+                "target": "Basic Computing, School, Office Work",
+                "description": "Most affordable build for essential computing",
+                "components": {
+                    "CPU": "AMD Ryzen 3 3200G",  # FROM YOUR DATA
+                    "GPU": "Integrated Graphics (from CPU)",
+                    "Motherboard": "RAMSTA RS-B450MP",  # FROM YOUR DATA
+                    "RAM": "HKCMEMORY HU40 DDR4 (8GB)",  # FROM YOUR DATA
+                    "Storage": "Crucial MX500 500GB",  # FROM YOUR DATA
+                    "PSU": "Seasonic Focus Plus Gold 550W",  # FROM YOUR DATA
+                    "Case Fan": "COOLMOON YX120"  # FROM YOUR DATA
+                },
+                "performance": "• Web Browsing: Smooth\n• Office Apps: Fast\n• Light Gaming: Basic esports games\n• Video Streaming: 1080p",
+                "upgrade_path": "Add more RAM or upgrade CPU later"
             },
-            "performance": "• Valorant: 100+ FPS\n• Dota 2: 80+ FPS\n• GTA V: 60 FPS (Medium)\n• Perfect for school/work",
-            "upgrade_path": "Add GPU like GTX 750 Ti or RTX 3050 later"
-        },
+
+            "entry": {
+                "name": "🎮 Entry Level Gaming PC",
+                "budget": "₱25,000 - ₱35,000",
+                "target": "1080p Gaming, Esports, School/Work",
+                "description": "Perfect for beginners and budget gaming",
+                "components": {
+                    "CPU": "AMD Ryzen 5 5600G",  # FROM YOUR DATA
+                    "GPU": "Integrated Graphics (from CPU)",
+                    "Motherboard": "ASUS PRIME B550M-K",  # FROM YOUR DATA
+                    # FROM YOUR DATA (8GB or 16GB)
+                    "RAM": "Kingston FURY Beast DDR4",
+                    "Storage": "Crucial MX500 500GB",  # FROM YOUR DATA
+                    "PSU": "Seasonic Focus Plus Gold 550W",  # FROM YOUR DATA
+                    "Case Fan": "COOLMOON YX120"  # FROM YOUR DATA
+                },
+                "performance": "• Valorant: 100+ FPS\n• Dota 2: 80+ FPS\n• GTA V: 60 FPS (Medium)\n• Perfect for school/work",
+                "upgrade_path": "Add GPU like GTX 750 Ti or RTX 3050 later"
+            },
 
             "mid": {
-            "name": "⚡ Mid-Range Gaming PC",
-            "budget": "₱45,000 - ₱60,000",
-            "target": "1440p Gaming, Streaming, Content Creation",
-            "description": "Great balance of performance and value",
-            "components": {
-                "CPU": "Intel Core i5-14600K",  # FROM YOUR DATA
-                "GPU": "MSI RTX 4060 GAMING X",  # FROM YOUR DATA
-                "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
-                "RAM": "HKCMEMORY HU40 DDR4 (16GB)",  # FROM YOUR DATA
-                "Storage": "Samsung 970 EVO Plus 1TB",  # FROM YOUR DATA
-                "PSU": "Corsair CX650",  # FROM YOUR DATA
-                "CPU Cooler": "Cooler Master Hyper 212 Black Edition",  # FROM YOUR DATA
-                "Case Fan": "Cooler Master SickleFlow 120 ARGB"  # FROM YOUR DATA
+                "name": "⚡ Mid-Range Gaming PC",
+                "budget": "₱45,000 - ₱60,000",
+                "target": "1440p Gaming, Streaming, Content Creation",
+                "description": "Great balance of performance and value",
+                "components": {
+                    "CPU": "Intel Core i5-14600K",  # FROM YOUR DATA
+                    "GPU": "MSI RTX 4060 GAMING X",  # FROM YOUR DATA
+                    "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
+                    "RAM": "HKCMEMORY HU40 DDR4 (16GB)",  # FROM YOUR DATA
+                    "Storage": "Samsung 970 EVO Plus 1TB",  # FROM YOUR DATA
+                    "PSU": "Corsair CX650",  # FROM YOUR DATA
+                    "CPU Cooler": "Cooler Master Hyper 212 Black Edition",  # FROM YOUR DATA
+                    "Case Fan": "Cooler Master SickleFlow 120 ARGB"  # FROM YOUR DATA
+                },
+                "performance": "• Cyberpunk 2077: 60+ FPS (High)\n• Streaming: Smooth 1080p60\n• AAA Games: High settings 1440p\n• Video Editing: Fast rendering",
+                "upgrade_path": "Add more storage or better cooling"
             },
-            "performance": "• Cyberpunk 2077: 60+ FPS (High)\n• Streaming: Smooth 1080p60\n• AAA Games: High settings 1440p\n• Video Editing: Fast rendering",
-            "upgrade_path": "Add more storage or better cooling"
-        },
 
             "high": {
-            "name": "🔥 High-End Gaming PC",
-            "budget": "₱70,000 - ₱100,000+",
-            "target": "4K Gaming, Professional Work, Streaming",
-            "description": "Premium performance for enthusiasts",
-            "components": {
-                "CPU": "Intel Core i7-14700K",  # FROM YOUR DATA
-                "GPU": "Sapphire RX 9060 XT 16GB",  # FROM YOUR DATA
-                "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
-                # FROM YOUR DATA (32GB total)
-                "RAM": "HKCMEMORY HU40 DDR4 (16GB) x2",
-                "Storage": "Samsung 970 EVO Plus 1TB + Western Digital Blue 2TB",  # FROM YOUR DATA
-                "PSU": "Corsair RM850x",  # FROM YOUR DATA
-                "CPU Cooler": "Deepcool LE500 MARRS",  # FROM YOUR DATA
-                "Case Fan": "Arctic P12 PWM PST"  # FROM YOUR DATA
-            },
-            "performance": "• 4K Gaming: 60+ FPS Ultra\n• Streaming: 4K capable\n• 3D Rendering: Professional grade\n• VR Ready: Excellent performance",
-            "upgrade_path": "Top-tier components as needed"
-        }
+                "name": "🔥 High-End Gaming PC",
+                "budget": "₱70,000 - ₱100,000+",
+                "target": "4K Gaming, Professional Work, Streaming",
+                "description": "Premium performance for enthusiasts",
+                "components": {
+                    "CPU": "Intel Core i7-14700K",  # FROM YOUR DATA
+                    "GPU": "Sapphire RX 9060 XT 16GB",  # FROM YOUR DATA
+                    "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
+                    # FROM YOUR DATA (32GB total)
+                    "RAM": "HKCMEMORY HU40 DDR4 (16GB) x2",
+                    "Storage": "Samsung 970 EVO Plus 1TB + Western Digital Blue 2TB",  # FROM YOUR DATA
+                    "PSU": "Corsair RM850x",  # FROM YOUR DATA
+                    "CPU Cooler": "Deepcool LE500 MARRS",  # FROM YOUR DATA
+                    "Case Fan": "Arctic P12 PWM PST"  # FROM YOUR DATA
+                },
+                "performance": "• 4K Gaming: 60+ FPS Ultra\n• Streaming: 4K capable\n• 3D Rendering: Professional grade\n• VR Ready: Excellent performance",
+                "upgrade_path": "Top-tier components as needed"
+            }
         }
         return build_presets.get(build_type.lower())
 
@@ -979,22 +997,41 @@ class PCChatbot:
         """Auto-detect what build type user wants"""
         user_lower = user_message.lower()
 
-        if any(word in user_lower for word in ['25', '30', '35', '25k', '30k', '35k', '25,000']):
+        build_trigger_words = [
+            'build', 'pc build', 'recommend', 'suggest', 'setup', 'rig', 'system', 'pc']
+        if not any(keyword in user_lower for keyword in build_trigger_words):
+            return None
+
+         # BUDGET
+        if any(word in user_lower for word in ['ultra budget', 'very cheap', 'minimum', 'basic computing', 'office pc', '15k', '15,000', '15000']):
+            return "budget"
+           # ENTRY
+        elif any(word in user_lower for word in ['15', '25', '30', '35', '25k', '30k', '35k', '15,000', '25,000', '30,000', '35,000']):
             return "entry"
-        elif any(word in user_lower for word in ['45', '50', '55', '60', '45k', '50k', '60k']):
+
+        # MID
+        elif any(word in user_lower for word in ['45', '50', '55', '60', '45k', '50k', '60k', '45,000', '50,000', '55,000', '60,000']):
             return "mid"
-        elif any(word in user_lower for word in ['70', '80', '90', '100', '70k', '80k', '100k']):
+
+        # HIGH
+        elif any(word in user_lower for word in ['70', '80', '90', '100', '70k', '80k', '100k', '70,000', '80,000', '90,000',]):
             return "high"
 
-        build_keywords = {
-            "entry": ['entry', 'budget', 'cheap', 'starter', 'beginner', 'basic', 'affordable', 'low cost', 'economy'],
+        build_keywords_mapping = {
+            "budget": ['budget', 'cheap', 'low cost', 'economy', 'affordable', 'basic'],
+            "entry": ['entry', 'starter', 'beginner', 'gaming'],
             "mid": ['mid', 'medium', 'mid-range', 'balanced', 'all-rounder', 'mainstream', 'standard'],
             "high": ['high', 'premium', 'high-end', 'best', 'gaming', 'pro', 'enthusiast', 'streaming', '4k']
         }
 
-        for build_type, keywords in build_keywords.items():
-            if any(keyword in user_lower for keyword in keywords):
-                return build_type
+        build_scores = {}
+        for build_type, keywords in build_keywords_mapping.items():
+            score = sum(1 for keyword in keywords if keyword in user_lower)
+            if score > 0:
+                build_scores[build_type] = score
+
+        if build_scores:
+            return max(build_scores.items(), key=lambda x: x[1])[0]
 
         return None
 
@@ -1080,7 +1117,6 @@ class PCChatbot:
         if psu1 != psu2:
             comparison += f"• PSU: {psu1} vs {psu2}\n"
 
-          # Performance comparison
         comparison += f"\n🎮 **Performance Summary**:\n"
 
         if build1_type == "entry" and build2_type == "mid":
@@ -1095,7 +1131,6 @@ class PCChatbot:
             comparison += "• **Entry**: Basic gaming, school/work\n• **High**: Premium gaming, content creation\n"
             comparison += "• **Upgrade**: Major performance jump\n"
 
-            # Recommendation based on use case
         comparison += f"\n💡 **Recommendation**:\n"
         if build1_type == "entry" and build2_type == "mid":
             comparison += "Choose **Entry** if: Budget < ₱35K, casual gaming\nChoose **Mid** if: Budget ₱45K+, serious gaming/streaming"
@@ -1149,6 +1184,18 @@ class PCChatbot:
 • "speed Kingston Fury Beast DDR4\""""
                 self.save_training_example(user_message, response)
                 return response
+
+            component_keywords = ['details', 'specs', 'specifications', 'price', 'cost', 'tdp', 'wattage',
+                                  'vram', 'clock', 'speed', 'cores', 'socket', 'chipset', 'capacity', 'compatibility']
+            build_keywords = ['build', 'pc build', 'setup', 'rig', 'system']
+
+            if any(keyword in user_lower for keyword in component_keywords):
+                component, confidence = self.find_component(user_message)
+                if component and confidence > 0.3:
+                    response = self.generate_exact_value_response(
+                        user_message, component)
+                    self.save_training_example(user_message, response)
+                    return response
 
             # 🆕 BUILD RECOMMENDATION DETECTION
             build_type = self.suggest_build_type(user_message)
