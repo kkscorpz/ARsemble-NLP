@@ -1,10 +1,18 @@
 import os
-import multiprocessing
 
-bind = "0.0.0.0:" + os.environ.get("PORT", "10000")
-workers = 1
-worker_class = "sync"
-timeout = 300  # Increase timeout to 5 minutes
-max_requests = 1000
-max_requests_jitter = 100
-preload_app = True  # Preload app to reduce memory usage
+# Use Render's PORT environment variable, default to 10000
+port = os.environ.get("PORT", "10000")
+bind = f"0.0.0.0:{port}"
+
+# Worker configuration
+workers = 2
+threads = 4
+timeout = 120
+
+# Logging
+accesslog = "-"
+errorlog = "-"
+loglevel = "info"
+
+# Prevent early timeouts
+keepalive = 5
