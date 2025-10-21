@@ -1,0 +1,133 @@
+/* style.css */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+}
+
+.header {
+    padding: 22px;
+    text-align: center;
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    color: #fff;
+}
+
+.header h1 {
+    font-size: 1.6rem;
+    margin-bottom: 6px;
+}
+
+.header p {
+    opacity: 0.9;
+    font-size: 0.95rem;
+}
+
+.examples {
+    padding: 12px 18px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: #f8f9fa;
+    border-bottom: 1px solid #eee;
+}
+
+.chip {
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    padding: 8px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.chip:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+.chat {
+    padding: 20px;
+    height: 420px;
+    overflow: auto;
+    background: #fafafa;
+}
+
+.message {
+    margin: 12px 0;
+    padding: 14px 16px;
+    border-radius: 14px;
+    max-width: 78%;
+    word-wrap: break-word;
+    white-space: pre-line;
+}
+
+.bot {
+    background: #fff;
+    border: 1px solid #ececec;
+    margin-right: auto;
+}
+
+.user {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: #fff;
+    margin-left: auto;
+}
+
+.input-area {
+    display: flex;
+    gap: 10px;
+    padding: 16px;
+    background: #fff;
+    border-top: 1px solid #eee;
+}
+
+input#input {
+    flex: 1;
+    padding: 12px 14px;
+    border-radius: 999px;
+    border: 1px solid #ddd;
+    font-size: 1rem;
+    outline: none;
+}
+
+#input:focus {
+    border-color: #007bff;
+    box-shadow: 0 6px 20px rgba(2, 132, 199, 0.08);
+}
+
+button#sendBtn {
+    padding: 12px 20px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.footer {
+    padding: 10px 14px;
+    background: #fafafa;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #666;
+    border-top: 1px solid #eee;
+}

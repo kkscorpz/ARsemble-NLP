@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ARsemble AI - Local</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1>🖥️ ARsemble AI - PC Expert</h1>
+        <p>Your local assistant for PC components, compatibility & stores</p>
+      </header>
+
+      <section class="examples">
+        <div
+          class="chip"
+          onclick="setExample('What is the socket type of the AMD Ryzen 5 5600X?')"
+        >
+          Socket for 5600X
+        </div>
+        <div
+          class="chip"
+          onclick="setExample('Will the AMD Ryzen 5 5600X work with the ASUS TUF Gaming B550-PLUS motherboard?')"
+        >
+          Compatibility: 5600X & B550
+        </div>
+        <div
+          class="chip"
+          onclick="setExample('What PSU do I need for an NVIDIA GTX 750 Ti and an AMD Ryzen 5 5600X?')"
+        >
+          PSU: 750 Ti + 5600X
+        </div>
+        <div
+          class="chip"
+          onclick="setExample('what TDP does Intel Core i7 13700K have?')"
+        >
+          i7-13700K TDP
+        </div>
+        <div class="chip" onclick="setExample('Where is SMFP Computer?')">
+          Where is SMFP Computer?
+        </div>
+      </section>
+
+      <main id="chat" class="chat">
+        <div class="message bot">
+          Hello! I'm ARsemble AI. Ask about component specs, compatibility, PSU
+          needs, or store locations (try: "Where is SMFP Computer?").
+        </div>
+      </main>
+
+      <div class="input-area">
+        <input
+          id="input"
+          placeholder="Ask about PC components, compatibility or stores..."
+          autocomplete="off"
+        />
+        <button id="sendBtn">Send</button>
+      </div>
+
+      <footer class="footer">
+        <small
+          >Local demo • Uses your Flask backend at <code>/chat</code> when
+          needed.</small
+        >
+      </footer>
+    </div>
+  </body>
+  <script src="/static/app.js"></script>
+</html>

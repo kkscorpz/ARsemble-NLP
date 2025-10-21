@@ -1,1402 +1,2891 @@
-import json
-import re
-import torch
-from sentence_transformers import SentenceTransformer, util
-import os
+
+import unicodedata
+import datetime
 import sys
+import contextlib
+import io
+import random
+import textwrap
+import json
+from google import genai
+import time
+import re
+import math
+import difflib
 
-# Add the current directory to Python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# -------------------------------
+# 🔑 Gemini API Setup
+# -------------------------------
+# Replace with your Gemini API key
+client = genai.Client(api_key="AIzaSyAPMnW1Hyjb_7LXcRwRwlWQLXfuy19ghaQ")
 
-
-class PCChatbot:
-    def __init__(self):
-        print("Initializing PC Expert AI...")
-        try:
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-            self.components_db = self.load_all_components()
-            self.component_names = list(self.components_db.keys())
-            self.embeddings = self.model.encode(
-                self.component_names, convert_to_tensor=True
-            )
-
-            # Load training data
-            self.training_file = "training_data/user_queries.json"
-            self.load_training_data()
-
-            print(
-                f"ARsemble AI Ready! Loaded {len(self.components_db)} components!")
-
-        except Exception as e:
-            print(f"Error initializing ARsemble AI: {e}")
-            # Set defaults to prevent crashes
-            self.model = None
-            self.components_db = {}
-            self.component_names = []
-            self.embeddings = None
-            self.training_data = []
-
-    def load_training_data(self):
-        """Load or create training data file"""
-        self.training_data = []
-        if os.path.exists(self.training_file):
-            with open(self.training_file, 'r', encoding='utf-8') as f:
-                self.training_data = json.load(f)
-            print(f"Loaded {len(self.training_data)} training examples")
-        else:
-            os.makedirs(os.path.dirname(self.training_file), exist_ok=True)
-            print("Starting with fresh training data")
-
-    def save_training_example(self, user_query, ai_response):
-        """Save user query and AI response to training data"""
-        training_example = {
-            "user_query": user_query,
-            "ai_response": ai_response
+# -------------------------------
+# 📚 Local Component Database (paste your dataset here)
+# -------------------------------
+data = {
+    "gpu": {
+        "integrated graphics": {
+            "name": "Integrated Graphics (from CPU)",
+            "type": "GPU",
+                    "vram": "Shared system memory",
+                    "clock": "Varies by CPU",
+                    "power": "0W (included in CPU power)",
+                    "slot": "None (integrated)",
+                    "price": "₱0 (included with CPU)",
+                    "compatibility": "Works with any compatible motherboard, no additional power required"
+        },
+        "gtx 750 ti": {
+            "name": "NVIDIA GTX 750 Ti",
+            "type": "GPU",
+                    "vram": "2GB GDDR5",
+                    "clock": "~1085 MHz (Boost)",
+                    "power": "~60 Watts",
+                    "slot": "PCIe 3.0 x16",
+                    "price": "₱4,000",
+                    "compatibility": "PCIe x16 slot, 300W PSU recommended"
+        },
+        "rtx 3050": {
+            "name": "Gigabyte RTX 3050 EAGLE OC",
+            "type": "GPU",
+                    "vram": "8GB GDDR6",
+                    "clock": "~1777 MHz (Boost)",
+                    "power": "~130 Watts",
+                    "slot": "PCIe 4.0 x16",
+                    "price": "₱12,000",
+                    "compatibility": "PCIe x16 slot, 550W PSU, 8-pin power connector"
+        },
+        "rtx 3060": {
+            "name": "MSI RTX 3060",
+            "type": "GPU",
+                    "vram": "12GB GDDR6",
+                    "clock": "~1777 MHz (Boost)",
+                    "power": "~170 Watts",
+                    "slot": "PCIe 4.0 x16",
+                    "price": "₱16,000",
+                    "compatibility": "PCIe x16 slot, 550W PSU, 8-pin power connector"
+        },
+        "rtx 4060": {
+            "name": "MSI RTX 4060 GAMING X",
+            "type": "GPU",
+                    "vram": "8GB GDDR6",
+                    "clock": "~2595 MHz (Boost)",
+                    "power": "~115 Watts",
+                    "slot": "PCIe 4.0 x8",
+                    "price": "₱18,000",
+                    "compatibility": "PCIe x16 slot, 550W PSU, 8-pin power connector"
         }
-
-        # Check if similar query already exists
-        for example in self.training_data:
-            if user_query.lower() == example['user_query'].lower():
-                return  # Skip if already exists
-
-        self.training_data.append(training_example)
-
-        # Save to file
-        with open(self.training_file, 'w', encoding='utf-8') as f:
-            json.dump(self.training_data, f, indent=2, ensure_ascii=False)
-
-    def load_all_components(self):
-        """Load COMPLETE PC components database - FIXED DUPLICATES"""
-        components = {
-            # ==========================
-            # ========== GPUs ==========
-            # ==========================
-            "integrated graphics": {
-                "name": "Integrated Graphics (from CPU)",
-                "type": "GPU",
-                "vram": "Shared system memory",
-                "clock": "Varies by CPU",
-                "power": "0W (included in CPU power)",
-                "slot": "None (integrated)",
-                "price": "₱0 (included with CPU)",
-                "compatibility": "Works with any compatible motherboard, no additional power required"
-            },
-            "rtx 3050": {
-                "name": "Gigabyte RTX 3050 EAGLE OC", "type": "GPU",
-                "vram": "8GB GDDR6", "clock": "~1777 MHz (Boost)", "power": "~130 Watts",
-                "slot": "PCIe 4.0 x16", "price": "₱12,000",
-                "compatibility": "Requires a motherboard with an available PCIe x16 slot (compatible with PCIe 3.0/4.0/5.0). Needs a PSU with sufficient wattage (450W-550W recommended total system power) and at least one 8-pin PCIe power connector. Ensure your case has enough physical clearance."
-            },
-            "rtx 4060": {
-                "name": "MSI RTX 4060 GAMING X", "type": "GPU",
-                "vram": "8GB GDDR6", "clock": "~2595 MHz (Boost)", "power": "~115 Watts",
-                "slot": "PCIe 4.0 x8", "price": "₱18,000",
-                "compatibility": "Requires a motherboard with an available PCIe x16 slot. Needs a 550W+ PSU with one 8-pin PCIe power connector. Compatible with modern cases."
-            },
-            "rx 9060 xt 8gb": {
-                "name": "Gigabyte RX 9060 XT Gaming OC", "type": "GPU",
-                "vram": "8GB GDDR6", "clock": "~2200 MHz (Boost)", "power": "~180 Watts",
-                "slot": "PCIe 4.0 x16", "price": "₱26,000",
-                "compatibility": "Requires PCIe x16 slot. Recommended 600W PSU with 2x 8-pin PCIe connectors. Ensure your case supports full-length GPUs."
-            },
-            "gtx 750 ti": {
-                "name": "NVIDIA GTX 750 Ti", "type": "GPU",
-                "vram": "4GB GDDR5", "clock": "~1085 MHz (Boost)", "power": "~60 Watts",
-                "slot": "PCIe 3.0 x16", "price": "₱4,000",
-                "compatibility": "Very low power draw (300W PSU recommended). Single 6-pin PCIe power connector or none depending on model. Fits in most cases due to compact size."
-            },
-            "rtx 3060": {
-                "name": "MSI RTX 3060", "type": "GPU",
-                "vram": "12GB GDDR6", "clock": "~1777 MHz (Boost)", "power": "~170 Watts",
-                "slot": "PCIe 4.0 x16", "price": "₱16,000",
-                "compatibility": "Needs PCIe x16 slot and 550W+ PSU. Requires 1x 8-pin PCIe power connector. Ensure case has enough clearance."
-            },
-            "rx 9060 xt 16gb": {
-                "name": "Sapphire RX 9060 XT", "type": "GPU",
-                "vram": "16GB GDDR6", "clock": "~2400 MHz (Boost)", "power": "~220 Watts",
-                "slot": "PCIe 4.0 x16", "price": "₱32,000",
-                "compatibility": "Requires PCIe x16 slot, 650W+ PSU with 2x 8-pin PCIe connectors. Ensure case supports large GPUs with proper cooling."
-            },
-
-            # ==========================
-            # ========== CPUs ==========
-            # ==========================
-            "intel core i9-14900k": {
-                "name": "Intel Core i9-14900K", "type": "CPU", "price": "₱39,000",
-                "socket": "LGA 1700", "cores": "24 cores (8P + 16E), 32 threads",
-                "clock": "3.2 GHz (P), 2.4 GHz (E)", "tdp": "125W TDP / 253W max",
-                "compatibility": "Intel 600/700 series chipsets, BIOS update may be needed, Z790 recommended, requires strong cooling (240mm+), 750W+ PSU"
-            },
-            "intel core i7-14700k": {
-                "name": "Intel Core i7-14700K", "type": "CPU", "price": "₱29,000",
-                "socket": "LGA 1700", "cores": "20 cores (8P + 12E), 28 threads",
-                "clock": "3.4 GHz (P), 2.5 GHz (E)", "tdp": "125W TDP / 253W max",
-                "compatibility": "Z790 or B760, high-performance cooling, 750W+ PSU"
-            },
-            "intel core i7-13700k": {
-                "name": "Intel Core i7-13700K", "type": "CPU", "price": "₱25,000",
-                "socket": "LGA 1700", "cores": "16 cores (8P + 8E), 24 threads",
-                "clock": "~3.4 GHz (P), ~2.5 GHz (E)", "tdp": "125W TDP / 253W max",
-                "compatibility": "Z790 or B760, strong cooling, 700W+ PSU"
-            },
-            "intel core i5-14600k": {
-                "name": "Intel Core i5-14600K", "type": "CPU", "price": "₱19,000",
-                "socket": "LGA 1700", "cores": "14 cores (6P + 8E), 20 threads",
-                "clock": "3.5 GHz (P), 2.6 GHz (E)", "tdp": "125W TDP / 181W max",
-                "compatibility": "B760 or Z790, mid to high-end cooling, 650W+ PSU"
-            },
-            "intel core i5-14500": {
-                "name": "Intel Core i5-14500", "type": "CPU", "price": "₱15,000",
-                "socket": "LGA 1700", "cores": "14 cores (6P + 8E), 20 threads",
-                "clock": "2.6 GHz (P), 1.9 GHz (E)", "tdp": "65W TDP / 154W max",
-                "compatibility": "B760 or H610, basic cooling, 550W+ PSU"
-            },
-            "intel core i5-13400": {
-                "name": "Intel Core i5-13400", "type": "CPU", "price": "₱13,000",
-                "socket": "LGA 1700", "cores": "10 cores (6P + 4E), 16 threads",
-                "clock": "2.5 GHz (P), 1.8 GHz (E)", "tdp": "65W TDP / 148W max",
-                "compatibility": "H610 or B760, basic cooling, 500W+ PSU"
-            },
-            "intel core i3-14100": {
-                "name": "Intel Core i3-14100", "type": "CPU", "price": "₱8,000",
-                "socket": "LGA 1700", "cores": "4 cores (P only), 8 threads",
-                "clock": "3.5 GHz (P)", "tdp": "60W TDP / 110W max",
-                "compatibility": "H610 or B760, stock or basic cooling, 450W+ PSU"
-            },
-            "intel core i3-13100": {
-                "name": "Intel Core i3-13100", "type": "CPU", "price": "₱7,500",
-                "socket": "LGA 1700", "cores": "4 cores, 8 threads",
-                "clock": "3.4 GHz (P)", "tdp": "60W TDP / ~89W max",
-                "compatibility": "H610 or B760, stock or basic cooling, 450W+ PSU"
-            },
-            "amd ryzen 9 7950x": {
-                "name": "AMD Ryzen 9 7950X", "type": "CPU", "price": "₱34,000",
-                "socket": "AM5", "cores": "16 cores / 32 threads",
-                "clock": "4.5 GHz", "tdp": "170W TDP / 230W max",
-                "compatibility": "AM5 boards (X670E/X670/B650E), DDR5 only, 360mm+ AIO, 850W+ PSU"
-            },
-            "amd ryzen 9 9900x": {
-                "name": "AMD Ryzen 9 9900X", "type": "CPU", "price": "TBD",
-                "socket": "AM5 (expected)", "cores": "TBD",
-                "clock": "TBD", "tdp": "TBD",
-                "compatibility": "Expected AM5 + DDR5 + high cooling"
-            },
-            "amd ryzen 9 9900x3d": {
-                "name": "AMD Ryzen 9 9900X3D", "type": "CPU", "price": "TBD",
-                "socket": "AM5 (expected)", "cores": "TBD",
-                "clock": "TBD", "tdp": "TBD",
-                "compatibility": "Expected AM5, DDR5, advanced cooling due to 3D V-Cache"
-            },
-            "amd ryzen 7 7700x": {
-                "name": "AMD Ryzen 7 7700X", "type": "CPU", "price": "₱21,000",
-                "socket": "AM5", "cores": "8 cores / 16 threads",
-                "clock": "4.5 GHz", "tdp": "105W TDP",
-                "compatibility": "AM5 only, DDR5 only, 240mm AIO or mid-high air cooling, 650W+ PSU"
-            },
-            "amd ryzen 7 5700x": {
-                "name": "AMD Ryzen 7 5700X", "type": "CPU", "price": "₱14,000",
-                "socket": "AM4", "cores": "8 cores / 16 threads",
-                "clock": "3.4 GHz", "tdp": "65W TDP",
-                "compatibility": "AM4 boards (B550, X570), DDR4, BIOS update may be needed, 550W+ PSU"
-            },
-            "amd ryzen 5 5600x": {
-                "name": "AMD Ryzen 5 5600X", "type": "CPU", "price": "₱11,000",
-                "socket": "AM4", "cores": "6 cores / 12 threads",
-                "clock": "3.7 GHz", "tdp": "65W TDP",
-                "compatibility": "AM4 DDR4, B550/X570, basic to mid-air cooling, 550W+ PSU"
-            },
-            "amd ryzen 5 5600g": {
-                "name": "AMD Ryzen 5 5600G", "type": "CPU", "price": "₱9,000",
-                "socket": "AM4", "cores": "6 cores / 12 threads",
-                "clock": "3.9 GHz", "tdp": "65W TDP",
-                "compatibility": "AM4 DDR4, integrated GPU, stock cooling OK, 450W+ PSU"
-            },
-            "amd ryzen 3 3200g": {
-                "name": "AMD Ryzen 3 3200G", "type": "CPU", "price": "₱5,000",
-                "socket": "AM4", "cores": "4 cores / 4 threads",
-                "clock": "3.6 GHz", "tdp": "65W TDP",
-                "compatibility": "AM4, Vega graphics, stock cooler OK, 400W+ PSU"
-            },
-
-            # ==================================
-            # ========== Motherboards ==========
-            # ==================================
-            "asus prime b550m-k": {
-                "name": "ASUS PRIME B550M-K", "type": "Motherboard", "price": "₱6,500",
-                "socket": "AM4", "chipset": "B550", "form": "Micro-ATX", "ram": "DDR4, up to 128GB",
-                "compatibility": "Ryzen 3000/5000 series (excluding 3200G/3400G without BIOS update)"
-            },
-            "msi b450m a pro max ii": {
-                "name": "MSI B450M A PRO MAX II", "type": "Motherboard", "price": "₱4,500",
-                "socket": "AM4", "chipset": "B450", "form": "Micro-ATX", "ram": "DDR4, up to 64GB",
-                "compatibility": "Supports Ryzen 1000 to 5000 series with BIOS update"
-            },
-            "msi pro h610m s ddr4": {
-                "name": "MSI PRO H610M-S DDR4", "type": "Motherboard", "price": "₱5,000",
-                "socket": "LGA 1700", "chipset": "H610", "form": "Micro-ATX", "ram": "DDR4, up to 64GB",
-                "compatibility": "Supports 12th/13th/14th Gen Intel CPUs"
-            },
-            "ramsta rs-b450mp": {
-                "name": "RAMSTA RS-B450MP", "type": "Motherboard", "price": "₱3,800",
-                "socket": "AM4", "chipset": "B450", "form": "Micro-ATX", "ram": "DDR4, up to 64GB",
-                "compatibility": "Supports Ryzen 1000 to 5000 series (BIOS update may be needed)"
-            },
-            "ramsta rs-h311d4": {
-                "name": "RAMSTA RS-H311D4", "type": "Motherboard", "price": "₱2,900",
-                "socket": "LGA 1151", "chipset": "H310", "form": "Micro-ATX", "ram": "DDR4, up to 32GB",
-                "compatibility": "Supports Intel 8th/9th Gen CPUs (Coffee Lake)"
-            },
-            "msi b650m gaming plus wifi": {
-                "name": "MSI B650M Gaming Plus WiFi", "type": "Motherboard", "price": "₱12,500",
-                "socket": "AM5", "chipset": "B650", "form": "Micro-ATX", "ram": "DDR5, up to 128GB",
-                "compatibility": "Supports Ryzen 7000/8000 series"
-            },
-            "msi b760m gaming plus wifi ddr4": {
-                "name": "MSI B760M Gaming Plus WiFi DDR4", "type": "Motherboard", "price": "₱8,000",
-                "socket": "LGA 1700", "chipset": "B760", "form": "Micro-ATX", "ram": "DDR4, up to 128GB",
-                "compatibility": "Supports Intel 12th/13th/14th Gen CPUs"
-            },
-            "gigabyte h610m k ddr4": {
-                "name": "GIGABYTE H610M K DDR4", "type": "Motherboard", "price": "₱4,800",
-                "socket": "LGA 1700", "chipset": "H610", "form": "Micro-ATX", "ram": "DDR4, up to 64GB",
-                "compatibility": "Supports Intel 12th/13th/14th Gen CPUs"
-            },
-
-            # ==========================
-            # ========== RAM ==========
-            # ==========================
-            "kingston fury beast ddr4": {
-                "name": "Kingston FURY Beast DDR4", "type": "RAM", "price": "₱2,000",
-                "capacity": "8GB, 16GB, or 32GB", "speed": "3200 MHz", "memory_type": "DDR4",
-                "compatibility": "Requires motherboard with DDR4 DIMM slots (288-pin) supporting 1.35V and 3200 MHz. Check motherboard QVL (Qualified Vendor List) for guaranteed compatibility."
-            },
-            "kingston hyperx fury ddr3": {
-                "name": "Kingston HyperX FURY DDR3", "type": "RAM", "price": "₱1,200",
-                "capacity": "8GB", "speed": "1600 MHz", "memory_type": "DDR3",
-                "compatibility": "For older systems only. Requires a DDR3 (240-pin) motherboard. Incompatible with modern DDR4/DDR5 systems."
-            },
-            "hkc pc ddr4-3200 dimm": {
-                "name": "HKC PC DDR4-3200 DIMM", "type": "RAM", "price": "₱1,800",
-                "capacity": "8GB", "speed": "3200 MHz", "memory_type": "DDR4",
-                "compatibility": "Works with DDR4 (288-pin) motherboards supporting 1.2V and 3200 MHz. Recommend using matched pairs and checking motherboard QVL."
-            },
-            "hkcmemory hu40 ddr4 (16gb)": {
-                "name": "HKCMEMORY HU40 DDR4 (16GB)", "type": "RAM", "price": "₱3,500",
-                "capacity": "16GB", "speed": "3200 MHz", "memory_type": "DDR4",
-                "compatibility": "Compatible with DDR4 (288-pin) motherboards supporting 1.2V and 3200 MHz. Check QVL for higher capacity module compatibility."
-            },
-            "hkcmemory hu40 ddr4 (8gb)": {
-                "name": "HKCMEMORY HU40 DDR4 (8GB)", "type": "RAM", "price": "₱1,700",
-                "capacity": "8GB", "speed": "3200 MHz", "memory_type": "DDR4",
-                "compatibility": "Compatible with DDR4 (288-pin) motherboards supporting 1.2V and 3200 MHz."
-            },
-
-            # =============================
-            # ========== Storage ==========
-            # =============================
-            "seagate barracuda 1tb": {
-                "name": "Seagate Barracuda 1TB", "type": "Storage", "price": "₱2,500",
-                "capacity": "1TB", "interface": "SATA 6Gb/s", "form": "3.5-inch",
-                "compatibility": "Requires a motherboard with an available SATA port and a SATA power connector from the PSU. Ensure your case has a 3.5-inch drive bay. It's a good choice for bulk storage."
-            },
-            "western digital blue 2tb": {
-                "name": "Western Digital Blue 2TB", "type": "Storage", "price": "₱3,800",
-                "capacity": "2TB", "interface": "SATA 6Gb/s", "form": "3.5-inch",
-                "compatibility": "Requires a motherboard with an available SATA port and a SATA power connector from the PSU. Ensure your case has a 3.5-inch drive bay. Excellent for larger storage needs."
-            },
-            "samsung 970 evo plus 1tb": {
-                "name": "Samsung 970 EVO Plus 1TB", "type": "Storage", "price": "₱5,500",
-                "capacity": "1TB", "interface": "PCIe Gen 3.0 x4", "form": "M.2 2280",
-                "compatibility": "Requires a motherboard with an available M.2 slot supporting PCIe Gen 3.0 x4 NVMe SSDs. Check if your motherboard shares M.2 bandwidth with SATA ports."
-            },
-            "crucial mx500 500gb": {
-                "name": "Crucial MX500 500GB", "type": "Storage", "price": "₱3,000",
-                "capacity": "500GB", "interface": "SATA 6Gb/s", "form": "2.5-inch",
-                "compatibility": "Requires a motherboard with an available SATA port and a SATA power connector from the PSU. Ensure your case has a 2.5-inch drive bay. It's a reliable and cost-effective option for a fast boot drive or general storage."
-            },
-
-            # ==========================
-            # ========== PSUs ==========
-            # ==========================
-            "corsair rm850x": {
-                "name": "Corsair RM850x", "type": "PSU", "price": "₱8,000",
-                "wattage": "850W", "efficiency": "80 Plus Gold", "modular": "Fully Modular",
-                "compatibility": "Great for high-performance gaming PCs (RTX 30/40, RX 6000/7000)."
-            },
-            "cooler master mwe white 750w": {
-                "name": "Cooler Master MWE White 750W", "type": "PSU", "price": "₱3,500",
-                "wattage": "750W", "efficiency": "80 Plus White", "modular": "Non-Modular",
-                "compatibility": "Best for mid-range PCs. Ensure your GPU's PCIe connectors match. Non-modular = harder cable management."
-            },
-            "corsair cx650": {
-                "name": "Corsair CX650", "type": "PSU", "price": "₱4,000",
-                "wattage": "650W", "efficiency": "80 Plus Bronze", "modular": "Non-Modular",
-                "compatibility": "Good for Ryzen 5/i5 builds with GPUs like RTX 3050/3060 or RX 6600. Watch for cable clutter (non-modular)."
-            },
-            "cougar gx-f 750w": {
-                "name": "Cougar GX-F 750W", "type": "PSU", "price": "₱5,500",
-                "wattage": "750W", "efficiency": "80 Plus Gold", "modular": "Fully Modular",
-                "compatibility": "Great for mid to high-end builds. Fully modular makes cable management easier."
-            },
-            "seasonic focus plus gold 550w": {
-                "name": "Seasonic Focus Plus Gold 550W", "type": "PSU", "price": "₱6,000",
-                "wattage": "550W", "efficiency": "80 Plus Gold", "modular": "Fully Modular",
-                "compatibility": "Ideal for entry-level to mid-range builds with RTX 3050/3060, RX 6600. Fully modular = neat builds."
-            },
-
-            # ===============================
-            # ========== Case Fans ========== hindi na kasama sa data
-            # ===============================
-            "coolmoon yx120": {
-                "name": "COOLMOON YX120", "type": "Case Fan", "price": "₱250",
-                "size": "120mm", "rpm": "1200 RPM", "airflow": "38 CFM", "noise": "20 dBA"
-            },
-            "cooler master sickleflow 120 argb": {
-                "name": "Cooler Master SickleFlow 120 ARGB", "type": "Case Fan", "price": "₱600",
-                "size": "120mm", "rpm": "650-1800 RPM", "airflow": "62 CFM", "noise": "8-27 dBA"
-            },
-            "arctic p12 pwm pst": {
-                "name": "Arctic P12 PWM PST", "type": "Case Fan", "price": "₱450",
-                "size": "120mm", "rpm": "200-1800 RPM", "airflow": "56.3 CFM", "noise": "0.3 Sone"
-            },
-
-            # =================================
-            # ========== CPU Coolers ==========
-            # =================================
-            "coolmoon aosor s400": {
-                "name": "COOLMOON AOSOR S400", "type": "CPU Cooler", "price": "₱1,200",
-                "cooler_type": "Air Cooler", "fan_size": "120mm", "tdp": "Up to 130W",
-                "sockets": "Intel LGA 1700/1200/115X, AMD AM4"
-            },
-            "cooler master hyper 212 black edition": {
-                "name": "Cooler Master Hyper 212 Black Edition", "type": "CPU Cooler", "price": "₱2,500",
-                "cooler_type": "Air Cooler", "fan_size": "120mm", "tdp": "Up to 150W",
-                "sockets": "Intel LGA 1700/1200/115X, AMD AM4/AM5"
-            },
-            "thermalright peerless assassin 120 se": {
-                "name": "Thermalright Peerless Assassin 120 SE", "type": "CPU Cooler", "price": "₱3,000",
-                "cooler_type": "Dual-Tower Air Cooler", "fan_size": "2x 120mm", "tdp": "Up to 245W",
-                "sockets": "Intel LGA 1700/1200/115X, AMD AM4/AM5"
-            },
-            "deepcool le500 marrs": {
-                "name": "Deepcool LE500 MARRS", "type": "CPU Cooler", "price": "₱4,500",
-                "cooler_type": "AIO Liquid Cooler (240mm)", "fan_size": "2x 120mm", "tdp": "Up to 220W",
-                "sockets": "Intel LGA 1700/1200/115X, AMD AM4/AM5"
-            }
+    },
+    "cpu": {
+        "amd ryzen 3 3200g": {
+            "name": "AMD Ryzen 3 3200G",
+                    "type": "CPU",
+                    "socket": "AM4",
+                    "cores": "4 Cores / 4 Threads",
+                    "clock": "3.6 GHz / 4.0 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "Vega 8",
+                    "price": "₱4,500",
+                    "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "amd ryzen 5 3600": {
+            "name": "AMD Ryzen 5 3600",
+                    "type": "CPU",
+                    "socket": "AM4",
+                    "cores": "6 Cores / 12 Threads",
+                    "clock": "3.6 GHz / 4.2 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "None",
+                    "price": "₱6,500",
+                    "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "amd ryzen 5 5600g": {
+            "name": "AMD Ryzen 5 5600G",
+                    "type": "CPU",
+                    "socket": "AM4",
+                    "cores": "6 Cores / 12 Threads",
+                    "clock": "3.9 GHz / 4.4 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "Vega 7",
+                    "price": "₱8,500",
+                    "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "amd ryzen 5 5600x": {
+            "name": "AMD Ryzen 5 5600X",
+                    "type": "CPU",
+                    "socket": "AM4",
+                    "cores": "6 Cores / 12 Threads",
+                    "clock": "3.7 GHz / 4.6 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "None",
+                    "price": "₱9,000",
+                    "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "amd ryzen 7 5700x": {
+            "name": "AMD Ryzen 7 5700X",
+                    "type": "CPU",
+                    "socket": "AM4",
+                    "cores": "8 Cores / 16 Threads",
+                    "clock": "3.4 GHz / 4.6 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "None",
+                    "price": "₱12,000",
+                    "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "amd ryzen 7 5800x": {
+            "name": "AMD Ryzen 7 5800X",
+                    "type": "CPU",
+                    "socket": "AM4",
+                    "cores": "8 Cores / 16 Threads",
+                    "clock": "3.8 GHz / 4.7 GHz Boost",
+                    "tdp": "105W",
+                    "igpu": "None",
+                    "price": "₱14,000",
+                    "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "amd ryzen 9 5900x": {
+            "name": "AMD Ryzen 9 5900X",
+                    "type": "CPU",
+                    "socket": "AM4",
+                    "cores": "12 Cores / 24 Threads",
+                    "clock": "3.7 GHz / 4.8 GHz Boost",
+                    "tdp": "105W",
+                    "igpu": "None",
+                    "price": "₱18,000",
+                    "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "amd ryzen 5 7600": {
+            "name": "AMD Ryzen 5 7600",
+                    "type": "CPU",
+                    "socket": "AM5",
+                    "cores": "6 Cores / 12 Threads",
+                    "clock": "3.8 GHz / 5.1 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "Radeon Graphics",
+                    "price": "₱13,500",
+                    "compatibility": "AM5 Motherboards, DDR5 RAM"
+        },
+        "amd ryzen 7 7700x": {
+            "name": "AMD Ryzen 7 7700X",
+                    "type": "CPU",
+                    "socket": "AM5",
+                    "cores": "8 Cores / 16 Threads",
+                    "clock": "4.5 GHz / 5.4 GHz Boost",
+                    "tdp": "105W",
+                    "igpu": "Radeon Graphics",
+                    "price": "₱18,500",
+                    "compatibility": "AM5 Motherboards, DDR5 RAM"
+        },
+        "amd ryzen 9 7900x": {
+            "name": "AMD Ryzen 9 7900X",
+                    "type": "CPU",
+                    "socket": "AM5",
+                    "cores": "12 Cores / 24 Threads",
+                    "clock": "4.7 GHz / 5.6 GHz Boost",
+                    "tdp": "170W",
+                    "igpu": "Radeon Graphics",
+                    "price": "₱25,000",
+                    "compatibility": "AM5 Motherboards, DDR5 RAM"
+        },
+        "amd ryzen 9 7950x": {
+            "name": "AMD Ryzen 9 7950X",
+                    "type": "CPU",
+                    "socket": "AM5",
+                    "cores": "16 Cores / 32 Threads",
+                    "clock": "4.5 GHz / 5.7 GHz Boost",
+                    "tdp": "170W",
+                    "igpu": "Radeon Graphics",
+                    "price": "₱32,000",
+                    "compatibility": "AM5 Motherboards, DDR5 RAM"
+        },
+        "amd ryzen 5 5600x": {
+            "name": "AMD Ryzen 5 5600X",
+            "type": "CPU",
+            "socket": "AM4",
+            "cores": "6 Cores / 12 Threads",
+            "clock": "3.7 GHz / 4.6 GHz Boost",
+            "tdp": "65W",
+            "igpu": "None",
+            "price": "₱9,000",
+            "compatibility": "AM4 Motherboards, DDR4 RAM"
+        },
+        "intel core i5 13400": {
+            "name": "Intel Core i5 13400",
+            "type": "CPU",
+            "socket": "LGA1700",
+            "cores": "10 Cores / 16 Threads",
+            "clock": "2.5 GHz / 4.6 GHz Boost",
+            "tdp": "65W",
+            "igpu": "UHD Graphics 730",
+            "price": "₱12,000",
+            "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i3 13100": {
+            "name": "Intel Core i3 13100",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "4 Cores / 8 Threads",
+                    "clock": "3.4 GHz / 4.5 GHz Boost",
+                    "tdp": "60W",
+                    "igpu": "UHD Graphics 730",
+                    "price": "₱6,000",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i3 14100": {
+            "name": "Intel Core i3 14100",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "4 Cores / 8 Threads",
+                    "clock": "3.5 GHz / 4.7 GHz Boost",
+                    "tdp": "60W",
+                    "igpu": "UHD Graphics 730",
+                    "price": "₱6,500",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i5 13400": {
+            "name": "Intel Core i5 13400",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "10 Cores / 16 Threads",
+                    "clock": "2.5 GHz / 4.6 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "UHD Graphics 730",
+                    "price": "₱12,000",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i5 14500": {
+            "name": "Intel Core i5 14500",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "14 Cores / 20 Threads",
+                    "clock": "2.6 GHz / 4.8 GHz Boost",
+                    "tdp": "65W",
+                    "igpu": "UHD Graphics 730",
+                    "price": "₱13,500",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i5 14600k": {
+            "name": "Intel Core i5 14600K",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "14 Cores / 20 Threads",
+                    "clock": "3.5 GHz / 5.3 GHz Boost",
+                    "tdp": "125W",
+                    "igpu": "UHD Graphics 770",
+                    "price": "₱16,000",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i7 13700k": {
+            "name": "Intel Core i7 13700K",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "16 Cores / 24 Threads",
+                    "clock": "3.4 GHz / 5.4 GHz Boost",
+                    "tdp": "125W",
+                    "igpu": "UHD Graphics 770",
+                    "price": "₱22,000",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i7 14700k": {
+            "name": "Intel Core i7 14700K",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "20 Cores / 28 Threads",
+                    "clock": "3.4 GHz / 5.6 GHz Boost",
+                    "tdp": "125W",
+                    "igpu": "UHD Graphics 770",
+                    "price": "₱24,000",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
+        },
+        "intel core i9 14900k": {
+            "name": "Intel Core i9 14900K",
+                    "type": "CPU",
+                    "socket": "LGA1700",
+                    "cores": "24 Cores / 32 Threads",
+                    "clock": "3.2 GHz / 6.0 GHz Boost",
+                    "tdp": "125W",
+                    "igpu": "UHD Graphics 770",
+                    "price": "₱32,000",
+                    "compatibility": "LGA1700 Motherboards, DDR4/DDR5"
         }
-        return components
-
-    def find_component(self, query):
-        """Find the most relevant component using SMART matching"""
-        query_lower = query.lower().strip()
-
-        # STRATEGY 1: EXACT NAME MATCH
-        for comp_key, component in self.components_db.items():
-            if query_lower == component['name'].lower():
-                return component, 1.0
-
-        # STRATEGY 2: KEYWORD MATCHING FOR COMMON COMPONENTS - FIXED MAPPINGS
-        keyword_mapping = {
-            # GPU - SORTED BY LENGTH (longest/most specific first)
-            "integrated graphics": "integrated graphics",
-            "integrated gpu": "integrated graphics",
-            "igpu": "integrated graphics",
-            "onboard graphics": "integrated graphics",
-            "geforce rtx 3050": "rtx 3050",
-            "geforce rtx 4060": "rtx 4060",
-            "geforce rtx 3060": "rtx 3060",
-            "geforce gtx 750 ti": "gtx 750 ti",
-            "radeon rx 9060 xt": "rx 9060 xt 8gb",
-            "radeon rx 9060": "rx 9060 xt 8gb",
-            "rtx 3050": "rtx 3050",
-            "rtx 4060": "rtx 4060",
-            "rtx 3060": "rtx 3060",
-            "rx 9060 xt": "rx 9060 xt 8gb",
-            "gtx 750 ti": "gtx 750 ti",
-            "3050": "rtx 3050",
-            "4060": "rtx 4060",
-            "3060": "rtx 3060",
-            "rx 9060": "rx 9060 xt 8gb",
-            "750 ti": "gtx 750 ti",
-
-            # CPU mappings - Intel (MOST SPECIFIC FIRST)
-            "intel-core i9-14900k": "intel core i9-14900k",
-            "intel-core i7-14700k": "intel core i7-14700k",
-            "intel-core i7-13700k": "intel core i7-13700k",
-            "intel-core i5-14600k": "intel core i5-14600k",
-            "intel-core i5-14500": "intel core i5-14500",
-            "intel-core i5-13400": "intel core i5-13400",
-            "intel-core i3-14100": "intel core i3-14100",
-            "intel-core i3-13100": "intel core i3-13100",
-            "i9-14900k": "intel core i9-14900k",
-            "i7-14700k": "intel core i7-14700k",
-            "i7-13700k": "intel core i7-13700k",
-            "i5-14600k": "intel core i5-14600k",
-            "i5-14500": "intel core i5-14500",
-            "i5-13400": "intel core i5-13400",
-            "i3-14100": "intel core i3-14100",
-            "i3-13100": "intel core i3-13100",
-            "14900k": "intel core i9-14900k",
-            "14700k": "intel core i7-14700k",
-            "13700k": "intel core i7-13700k",
-            "14600k": "intel core i5-14600k",
-            "14500": "intel core i5-14500",
-            "13400": "intel core i5-13400",
-            "14100": "intel core i3-14100",
-            "13100": "intel core i3-13100",
-
-            # CPU mappings - AMD (MOST SPECIFIC FIRST)
-            "amd ryzen 9 7950x": "amd ryzen 9 7950x",
-            "amd ryzen 9 9900x": "amd ryzen 9 9900x",
-            "amd ryzen 9 9900x3d": "amd ryzen 9 9900x3d",
-            "amd ryzen 7 7700x": "amd ryzen 7 7700x",
-            "amd ryzen 7 5700x": "amd ryzen 7 5700x",
-            "amd ryzen 5 5600x": "amd ryzen 5 5600x",
-            "amd ryzen 5 5600g": "amd ryzen 5 5600g",
-            "amd ryzen 3 3200g": "amd ryzen 3 3200g",
-            "ryzen 9 7950x": "amd ryzen 9 7950x",
-            "ryzen 9 9900x": "amd ryzen 9 9900x",
-            "ryzen 9 9900x3d": "amd ryzen 9 9900x3d",
-            "ryzen 7 7700x": "amd ryzen 7 7700x",
-            "ryzen 7 5700x": "amd ryzen 7 5700x",
-            "ryzen 5 5600x": "amd ryzen 5 5600x",
-            "ryzen 5 5600g": "amd ryzen 5 5600g",
-            "ryzen 3 3200g": "amd ryzen 3 3200g",
-            "7950x": "amd ryzen 9 7950x",
-            "9900x": "amd ryzen 9 9900x",
-            "9900x3d": "amd ryzen 9 9900x3d",
-            "7700x": "amd ryzen 7 7700x",
-            "5700x": "amd ryzen 7 5700x",
-            "5600x": "amd ryzen 5 5600x",
-            "5600g": "amd ryzen 5 5600g",
-            "3200g": "amd ryzen 3 3200g",
-
-            # Motherboard mappings
-            "asus prime b550m-k": "asus prime b550m-k",
-            "msi b450m a pro max ii": "msi b450m a pro max ii",
-            "msi pro h610m s ddr4": "msi pro h610m s ddr4",
-            "ramsta rs-b450mp": "ramsta rs-b450mp",
-            "ramsta rs-h311d4": "ramsta rs-h311d4",
-            "msi b650m gaming plus wifi": "msi b650m gaming plus wifi",
-            "msi b760m gaming plus wifi ddr4": "msi b760m gaming plus wifi ddr4",
-            "gigabyte h610m k ddr4": "gigabyte h610m k ddr4",
-            "asus prime b550m": "asus prime b550m-k",
-            "msi b450m": "msi b450m a pro max ii",
-            "msi h610m": "msi pro h610m s ddr4",
-            "ramsta b450": "ramsta rs-b450mp",
-            "ramsta h311": "ramsta rs-h311d4",
-            "msi b650m": "msi b650m gaming plus wifi",
-            "msi b760m": "msi b760m gaming plus wifi ddr4",
-            "gigabyte h610m": "gigabyte h610m k ddr4",
-            "b550m": "asus prime b550m-k",
-            "b450m": "msi b450m a pro max ii",
-            "h610m": "msi pro h610m s ddr4",
-            "b650m": "msi b650m gaming plus wifi",
-            "b760m": "msi b760m gaming plus wifi ddr4",
-
-            # RAM mappings
-            "kingston fury beast ddr4": "kingston fury beast ddr4",
-            "kingston hyperx fury ddr3": "kingston hyperx fury ddr3",
-            "hkc pc ddr4-3200 dimm": "hkc pc ddr4-3200 dimm",
-            "hkcmemory hu40 ddr4 (16gb)": "hkcmemory hu40 ddr4 (16gb)",
-            "hkcmemory hu40 ddr4 (8gb)": "hkcmemory hu40 ddr4 (8gb)",
-            "kingston fury beast": "kingston fury beast ddr4",
-            "kingston hyperx fury": "kingston hyperx fury ddr3",
-            "fury beast": "kingston fury beast ddr4",
-            "hyperx fury": "kingston hyperx fury ddr3",
-            "hkc ddr4": "hkc pc ddr4-3200 dimm",
-            "hkc memory": "hkcmemory hu40 ddr4 (16gb)",
-
-            # Storage mappings
-            "seagate barracuda 1tb": "seagate barracuda 1tb",
-            "western digital blue 2tb": "western digital blue 2tb",
-            "samsung 970 evo plus 1tb": "samsung 970 evo plus 1tb",
-            "crucial mx500 500gb": "crucial mx500 500gb",
-            "seagate 1tb": "seagate barracuda 1tb",
-            "wd blue 2tb": "western digital blue 2tb",
-            "samsung 970 evo": "samsung 970 evo plus 1tb",
-            "crucial mx500": "crucial mx500 500gb",
-
-            # PSU mappings
-            "corsair rm850x": "corsair rm850x",
-            "cooler master mwe white 750w": "cooler master mwe white 750w",
-            "corsair cx650": "corsair cx650",
-            "cougar gx-f 750w": "cougar gx-f 750w",
-            "seasonic focus plus gold 550w": "seasonic focus plus gold 550w",
-            "rm850x": "corsair rm850x",
-            "cooler master 750w": "cooler master mwe white 750w",
-            "cx650": "corsair cx650",
-            "cougar 750w": "cougar gx-f 750w",
-            "seasonic 550w": "seasonic focus plus gold 550w",
-
-            # Case Fan mappings
-            "coolmoon yx120": "coolmoon yx120",
-            "cooler master sickleflow 120 argb": "cooler master sickleflow 120 argb",
-            "arctic p12 pwm pst": "arctic p12 pwm pst",
-            "coolmoon fan": "coolmoon yx120",
-            "cooler master sickleflow": "cooler master sickleflow 120 argb",
-            "arctic p12": "arctic p12 pwm pst",
-
-            # CPU Cooler mappings
-            "coolmoon aosor s400": "coolmoon aosor s400",
-            "cooler master hyper 212 black edition": "cooler master hyper 212 black edition",
-            "thermalright peerless assassin 120 se": "thermalright peerless assassin 120 se",
-            "deepcool le500 marrs": "deepcool le500 marrs",
-            "coolmoon cooler": "coolmoon aosor s400",
-            "hyper 212": "cooler master hyper 212 black edition",
-            "peerless assassin": "thermalright peerless assassin 120 se",
-            "deepcool le500": "deepcool le500 marrs"
+    },
+    "motherboard": {
+        "gigabyte h610m k ddr4": {
+            "name": "GIGABYTE H610M K DDR4",
+                    "type": "Motherboard",
+                    "socket": "LGA1700",
+                    "form_factor": "mATX",
+                    "ram_slots": 2,
+                    "max_ram": "64GB",
+                    "ram_type": "DDR4",
+                    "nvme_slots": 1,
+                    "sata_ports": 4,
+                    "price": "₱4,500",
+                    "compatibility": "LGA1700 CPUs, DDR4 RAM, PCIe 4.0"
+        },
+        "msi pro h610m s ddr4": {
+            "name": "MSI Pro H610M S DDR4",
+                    "type": "Motherboard",
+                    "socket": "LGA1700",
+                    "form_factor": "mATX",
+                    "ram_slots": 2,
+                    "max_ram": "64GB",
+                    "ram_type": "DDR4",
+                    "nvme_slots": 1,
+                    "sata_ports": 4,
+                    "price": "₱4,800",
+                    "compatibility": "LGA1700 CPUs, DDR4 RAM, PCIe 4.0"
+        },
+        "msi b450m-a pro max ii": {
+            "name": "MSI B450M-A PRO MAX II",
+                    "type": "Motherboard",
+                    "socket": "AM4",
+                    "form_factor": "mATX",
+                    "ram_slots": 2,
+                    "max_ram": "64GB",
+                    "ram_type": "DDR4",
+                    "nvme_slots": 1,
+                    "sata_ports": 4,
+                    "price": "₱4,200",
+                    "compatibility": "AM4 CPUs, DDR4 RAM, PCIe 3.0"
+        },
+        "ramsta rs-b450mp": {
+            "name": "RAMSTA RS-B450MP",
+                    "type": "Motherboard",
+                    "socket": "AM4",
+                    "form_factor": "mATX",
+                    "ram_slots": 2,
+                    "max_ram": "64GB",
+                    "ram_type": "DDR4",
+                    "nvme_slots": 1,
+                    "sata_ports": 4,
+                    "price": "₱3,800",
+                    "compatibility": "AM4 CPUs, DDR4 RAM, PCIe 3.0"
+        },
+        "asus tuf gaming b550-plus": {
+            "name": "ASUS TUF GAMING B550-PLUS",
+                    "type": "Motherboard",
+                    "socket": "AM4",
+                    "form_factor": "ATX",
+                    "ram_slots": 4,
+                    "max_ram": "128GB",
+                    "ram_type": "DDR4",
+                    "nvme_slots": 2,
+                    "sata_ports": 6,
+                    "price": "₱7,800",
+                    "compatibility": "AM4 CPUs, DDR4 RAM, PCIe 4.0"
+        },
+        "asus prime b650-plus": {
+            "name": "ASUS PRIME B650-PLUS",
+                    "type": "Motherboard",
+                    "socket": "AM5",
+                    "form_factor": "ATX",
+                    "ram_slots": 4,
+                    "max_ram": "128GB",
+                    "ram_type": "DDR5",
+                    "nvme_slots": 3,
+                    "sata_ports": 4,
+                    "price": "₱9,500",
+                    "compatibility": "AM5 CPUs, DDR5 RAM, PCIe 4.0"
+        },
+        "msi pro x670-p wifi": {
+            "name": "MSI PRO X670-P WIFI",
+                    "type": "Motherboard",
+                    "socket": "AM5",
+                    "form_factor": "ATX",
+                    "ram_slots": 4,
+                    "max_ram": "128GB",
+                    "ram_type": "DDR5",
+                    "nvme_slots": 4,
+                    "sata_ports": 6,
+                    "price": "₱14,000",
+                    "compatibility": "AM5 CPUs, DDR5 RAM, PCIe 5.0"
+        },
+        "msi mpg z790 carbon wifi": {
+            "name": "MSI MPG Z790 CARBON WIFI",
+                    "type": "Motherboard",
+                    "socket": "LGA1700",
+                    "form_factor": "ATX",
+                    "ram_slots": 4,
+                    "max_ram": "128GB",
+                    "ram_type": "DDR5",
+                    "nvme_slots": 5,
+                    "sata_ports": 6,
+                    "price": "₱18,500",
+                    "compatibility": "LGA1700 CPUs, DDR5 RAM, PCIe 5.0"
         }
+    },
+    "ram": {
+        "kingston fury beast ddr4 8gb": {
+            "name": "Kingston FURY Beast DDR4 8GB",
+                    "type": "RAM",
+                    "capacity": "8GB",
+                    "speed": "3200MHz",
+                    "ram_type": "DDR4",
+                    "price": "₱1,500",
+                    "compatibility": "DDR4 Motherboards (AM4, LGA1700 DDR4)"
+        },
+        "kingston fury beast ddr4 16gb": {
+            "name": "Kingston FURY Beast DDR4 16GB",
+                    "type": "RAM",
+                    "capacity": "16GB",
+                    "speed": "3200MHz",
+                    "ram_type": "DDR4",
+                    "price": "₱3,000",
+                    "compatibility": "DDR4 Motherboards (AM4, LGA1700 DDR4)"
+        },
+        "hkcmemory hu40 ddr4 16gb": {
+            "name": "HKCMEMORY HU40 DDR4 16GB",
+                    "type": "RAM",
+                    "capacity": "16GB",
+                    "speed": "3200MHz",
+                    "ram_type": "DDR4",
+                    "price": "₱2,200",
+                    "compatibility": "DDR4 Motherboards (AM4, LGA1700 DDR4)"
+        },
+        "kingston fury beast ddr4 32gb": {
+            "name": "Kingston FURY Beast DDR4 32GB",
+                    "type": "RAM",
+                    "capacity": "32GB",
+                    "speed": "3200MHz",
+                    "ram_type": "DDR4",
+                    "price": "₱3,800",
+                    "compatibility": "DDR4 Motherboards (AM4, LGA1700 DDR4)"
+        },
+        "kingston fury beast ddr5 8gb": {
+            "name": "Kingston FURY Beast DDR5 8GB",
+                    "type": "RAM",
+                    "capacity": "8GB",
+                    "speed": "4800MHz",
+                    "ram_type": "DDR5",
+                    "price": "₱2,000",
+                    "compatibility": "DDR5 Motherboards (AM5, LGA1700 DDR5)"
+        },
+        "kingston fury beast ddr5 16gb": {
+            "name": "Kingston FURY Beast DDR5 16GB",
+                    "type": "RAM",
+                    "capacity": "16GB",
+                    "speed": "4800MHz",
+                    "ram_type": "DDR5",
+                    "price": "₱3,000",
+                    "compatibility": "DDR5 Motherboards (AM5, LGA1700 DDR5)"
+        },
+        "corsair vengeance ddr5 32gb": {
+            "name": "Corsair Vengeance DDR5 32GB",
+                    "type": "RAM",
+                    "capacity": "32GB",
+                    "speed": "5200MHz",
+                    "ram_type": "DDR5",
+                    "price": "₱5,500",
+                    "compatibility": "DDR5 Motherboards (AM5, LGA1700 DDR5)"
+        }
+    },
+    "storage": {
+        "seagate video 3.5\" hdd 500gb": {
+            "name": "Seagate Video 3.5\" HDD 500GB",
+                    "type": "HDD",
+                    "capacity": "500GB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱1,200",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "seagate video 3.5\" hdd 1tb": {
+            "name": "Seagate Video 3.5\" HDD 1TB",
+                    "type": "HDD",
+                    "capacity": "1TB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱1,800",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "ramsta s800 128gb": {
+            "name": "Ramsta S800 128GB SSD",
+                    "type": "SATA SSD",
+                    "capacity": "128GB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱800",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "ramsta s800 256gb": {
+            "name": "Ramsta S800 256GB SSD",
+                    "type": "SATA SSD",
+                    "capacity": "256GB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱1,200",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "ramsta s800 512gb": {
+            "name": "Ramsta S800 512GB SSD",
+                    "type": "SATA SSD",
+                    "capacity": "512GB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱1,800",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "ramsta s800 1tb": {
+            "name": "Ramsta S800 1TB SSD",
+                    "type": "SATA SSD",
+                    "capacity": "1TB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱2,800",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "ramsta s800 2tb": {
+            "name": "Ramsta S800 2TB SSD",
+                    "type": "SATA SSD",
+                    "capacity": "2TB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱4,500",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "crucial mx500 500gb": {
+            "name": "Crucial MX500 500GB SSD",
+                    "type": "SATA SSD",
+                    "capacity": "500GB",
+                    "interface": "SATA 6Gb/s",
+                    "price": "₱2,200",
+                    "compatibility": "Any motherboard with SATA port"
+        },
+        "samsung 970 evo plus 250gb": {
+            "name": "Samsung 970 EVO Plus 250GB",
+                    "type": "NVMe SSD",
+                    "capacity": "250GB",
+                    "interface": "PCIe 3.0 x4",
+                    "price": "₱1,800",
+                    "compatibility": "Motherboard with M.2 NVMe slot"
+        },
+        "samsung 970 evo plus 500gb": {
+            "name": "Samsung 970 EVO Plus 500GB",
+                    "type": "NVMe SSD",
+                    "capacity": "500GB",
+                    "interface": "PCIe 3.0 x4",
+                    "price": "₱2,500",
+                    "compatibility": "Motherboard with M.2 NVMe slot"
+        },
+        "samsung 970 evo plus 1tb": {
+            "name": "Samsung 970 EVO Plus 1TB",
+                    "type": "NVMe SSD",
+                    "capacity": "1TB",
+                    "interface": "PCIe 3.0 x4",
+                    "price": "₱4,000",
+                    "compatibility": "Motherboard with M.2 NVMe slot"
+        },
+        "samsung 970 evo plus 2tb": {
+            "name": "Samsung 970 EVO Plus 2TB",
+                    "type": "NVMe SSD",
+                    "capacity": "2TB",
+                    "interface": "PCIe 3.0 x4",
+                    "price": "₱7,000",
+                    "compatibility": "Motherboard with M.2 NVMe slot"
+        }
+    },
+    "psu": {
+        "inplay ak400": {
+            "name": "InPlay AK400",
+                    "type": "PSU",
+                    "wattage": "400W",
+                    "efficiency": "80+",
+                    "price": "₱1,200",
+                    "compatibility": "Basic builds, low-power components"
+        },
+        "inplay gs 550": {
+            "name": "InPlay GS 550",
+                    "type": "PSU",
+                    "wattage": "550W",
+                    "efficiency": "80+ Bronze",
+                    "price": "₱1,800",
+                    "compatibility": "Mid-range builds, single GPU systems"
+        },
+        "corsair cx650": {
+            "name": "Corsair CX650",
+                    "type": "PSU",
+                    "wattage": "650W",
+                    "efficiency": "80+ Bronze",
+                    "price": "₱3,500",
+                    "compatibility": "Gaming builds, most single GPU configurations"
+        },
+        "inplay gs 750": {
+            "name": "InPlay GS 750",
+                    "type": "PSU",
+                    "wattage": "750W",
+                    "efficiency": "80+ Bronze",
+                    "price": "₱2,500",
+                    "compatibility": "High-end builds, powerful GPUs"
+        },
+        "cooler master mwe white 750w": {
+            "name": "Cooler Master MWE White 750W",
+                    "type": "PSU",
+                    "wattage": "750W",
+                    "efficiency": "80+ White",
+                    "price": "₱3,800",
+                    "compatibility": "High-end gaming builds, multiple components"
+        },
+        "corsair rm850x 850w": {
+            "name": "Corsair RM850x 850W",
+                    "type": "PSU",
+                    "wattage": "850W",
+                    "efficiency": "80+ Gold",
+                    "price": "₱6,500",
+                    "compatibility": "Premium builds, high-end GPUs, overclocking"
+        }
+    },
+    "cpu_cooler": {
+        "fantech polar lc240": {
+            "name": "Fantech Polar LC240",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Liquid Cooler",
+                    "size": "240mm",
+                    "socket": "AM4, AM5, LGA1700, LGA1200, LGA1151",
+                    "price": "₱2,800",
+                    "compatibility": "Most modern CPU sockets"
+        },
+        "inplay seaview 240 pro": {
+            "name": "Inplay Seaview 240 Pro",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Liquid Cooler",
+                    "size": "240mm",
+                    "socket": "AM4, AM5, LGA1700, LGA1200",
+                    "price": "₱2,200",
+                    "compatibility": "Modern CPU sockets"
+        },
+        "inplay seaview 360 pro": {
+            "name": "Inplay Seaview 360 Pro",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Liquid Cooler",
+                    "size": "360mm",
+                    "socket": "AM4, AM5, LGA1700, LGA1200",
+                    "price": "₱2,800",
+                    "compatibility": "Modern CPU sockets"
+        },
+        "inplay s20": {
+            "name": "Inplay S20",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Air Cooler",
+                    "size": "120mm",
+                    "socket": "AM4, LGA1700, LGA1200",
+                    "price": "₱600",
+                    "compatibility": "Basic cooling for low to mid-range CPUs"
+        },
+        "inplay s40": {
+            "name": "Inplay S40",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Air Cooler",
+                    "size": "120mm",
+                    "socket": "AM4, AM5, LGA1700, LGA1200",
+                    "price": "₱800",
+                    "compatibility": "Mid-range CPUs, good value cooling"
+        },
+        "cooler master hyper 212 black edition": {
+            "name": "Cooler Master Hyper 212 Black Edition",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Air Cooler",
+                    "size": "120mm",
+                    "socket": "AM4, AM5, LGA1700, LGA1200, LGA1151",
+                    "price": "₱2,000",
+                    "compatibility": "Excellent air cooling for mid to high-end CPUs"
+        },
+        "deepcool ls720 se 360": {
+            "name": "DeepCool LS720 SE 360",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Liquid Cooler",
+                    "size": "360mm",
+                    "socket": "AM4, AM5, LGA1700, LGA1200",
+                    "price": "₱4,500",
+                    "compatibility": "High-performance cooling"
+        },
+        "cooler master masterliquid ml360r rgb": {
+            "name": "Cooler Master MasterLiquid ML360R RGB",
+                    "type": "CPU Cooler",
+                    "cooler_type": "Liquid Cooler",
+                    "size": "360mm",
+                    "socket": "AM4, AM5, LGA1700, LGA2066, LGA1200",
+                    "price": "₱5,500",
+                    "compatibility": "Premium cooling solution, high-end CPUs"
+        }
+    }
+}
 
-        # Sort by length (longest first for most specific matches)
-        sorted_keywords = sorted(keyword_mapping.keys(), key=len, reverse=True)
 
-        for keyword in sorted_keywords:
-            if keyword in query_lower:
-                component_key = keyword_mapping[keyword]
-                if component_key in self.components_db:
-                    component = self.components_db[component_key]
-                    return component, 0.9
+# -------------------------------
+# 🧰 Utilities
+# -------------------------------
 
-        # STRATEGY 3: PARTIAL NAME MATCH (fallback)
-        for comp_key, component in self.components_db.items():
-            component_name_lower = component['name'].lower()
-            # Check if ALL important words from component name are in query
-            important_words = [
-                word for word in component_name_lower.split() if len(word) > 2]
-            if important_words and all(word in query_lower for word in important_words):
-                print(f" PARTIAL MATCH: {component['name']}")
-                return component, 0.7
 
-        # STRATEGY 4: SEMANTIC SEARCH FALLBACK (AI-powered)
-        if self.model and self.embeddings is not None:
+def normalize_text(s):
+    """Lowercase & return alphanumeric tokens (keeps numbers like 5600g, i7)."""
+    if not s:
+        return []
+    return re.findall(r'\w+', s.lower())
+
+
+def parse_watts(value):
+    """Extract integer watt value from strings like '65W', '~115 Watts', '170W'."""
+    if not value:
+        return None
+    s = str(value)
+    m = re.search(r'(\d{2,4})', s.replace(',', ''))
+    return int(m.group(1)) if m else None
+
+
+def parse_price(value):
+    """Extract integer value from price string '₱1,800' or '₱ 1,800'."""
+    if not value:
+        return None
+    s = str(value)
+    m = re.search(r'(\d[\d,]*)', s)
+    if not m:
+        return None
+    num = int(m.group(1).replace(',', ''))
+    return num
+
+
+def round_up_psu(w):
+    """Round up to common PSU sizes: 450, 550, 650, 750, 850, 1000, 1200"""
+    sizes = [450, 550, 650, 750, 850, 1000, 1200, 1500]
+    for s in sizes:
+        if w <= s:
+            return s
+    return sizes[-1]
+
+
+def format_php(n):
+    """Format integer to Philippine peso string with commas."""
+    try:
+        return f"₱{int(n):,}"
+    except:
+        return str(n)
+
+
+def tokenize(text):
+    """Return lowercased tokens (alphanumeric + dash) for robust matching."""
+    if not text:
+        return []
+    # keep tokens like 'mini-itx', 'lga1700'
+    tokens = re.findall(r"[a-z0-9\-]+", text.lower())
+    return tokens
+
+
+# -------------------------------
+# 📚 Educational Features
+# -------------------------------
+
+
+EDU_EXPLANATIONS = {
+    "pcie": {
+        "title": "Understanding PCIe Slots",
+        "short": (
+            "PCI Express (PCIe) connects GPUs, SSDs, and network cards to the motherboard. "
+            "Each new generation doubles the data bandwidth. "
+            "Higher versions (4.0, 5.0) are faster but backward compatible."
+        ),
+        "notes": [
+            "PCIe 3.0 ≈ 1 GB/s per lane; PCIe 4.0 doubles that.",
+            "A PCIe 4.0 GPU works fine in a PCIe 3.0 slot (just slightly slower)."
+        ]
+    },
+    "ddr4 vs ddr5": {
+        "title": "DDR4 vs DDR5 Memory",
+        "short": (
+            "DDR5 is newer than DDR4, providing faster speeds, higher capacity per stick, "
+            "and better power efficiency. But it requires a DDR5-compatible motherboard."
+        ),
+        "notes": [
+            "DDR4 and DDR5 are not interchangeable.",
+            "DDR5 usually starts at 4800 MHz; DDR4 commonly around 3200–3600 MHz."
+        ]
+    },
+    "sockets": {
+        "title": "CPU Sockets Explained",
+        "short": (
+            "A CPU socket is the connector that holds your CPU on the motherboard. "
+            "Each CPU family supports only certain sockets."
+        ),
+        "notes": [
+            "AMD Ryzen 3000–5000 use AM4; Ryzen 7000 uses AM5.",
+            "Intel 12th–14th Gen CPUs use LGA1700 sockets."
+        ]
+    },
+    "psu efficiency": {
+        "title": "PSU Efficiency Ratings (80 Plus)",
+        "short": (
+            "PSUs have 80 Plus ratings like Bronze, Gold, or Platinum. "
+            "These indicate efficiency—how much power turns into usable energy instead of heat."
+        ),
+        "notes": [
+            "Bronze ≈ 85% efficient; Gold ≈ 90%; Platinum ≈ 92–94%.",
+            "Higher efficiency means less heat and slightly lower electricity use."
+        ]
+    }
+}
+
+
+def explain_concept(user_text):
+    """
+    Match a user query to an explanation in EDU_EXPLANATIONS.
+    Returns a formatted string or None if no concept matched.
+    """
+    q = (user_text or "").lower()
+    # Simple keyword matching for concept keys and synonyms
+    concept_map = {
+        "pcie": ["pcie", "pci-e", "pci express", "pcie 3.0", "pcie 4.0", "pcie 5.0"],
+        "ddr4 vs ddr5": ["ddr4", "ddr5", "ddr4 vs ddr5", "memory generations"],
+        "sockets": ["socket", "am4", "am5", "lga1700", "cpu socket"],
+        "psu efficiency": ["psu", "efficiency", "80+", "80 plus", "bronze", "gold", "platinum", "psu rating"]
+    }
+    for key, keys in concept_map.items():
+        if any(k in q for k in keys):
+            e = EDU_EXPLANATIONS.get(key)
+            if not e:
+                return None
+            out = []
+            out.append(f"🔎 {e['title']}\n")
+            # short paragraph, wrapped
+            out.append(textwrap.fill(e["short"], width=80))
+            if e.get("notes"):
+                out.append("\n\nKey notes:")
+                for n in e["notes"]:
+                    out.append("• " + n)
+            return "\n".join(out)
+    return None
+
+
+def list_components_by_category(user_text):
+    """
+    If user asked to 'list GPUs' or 'show CPU list', return all items in that category.
+    Recognizes plural and singular keywords.
+    """
+    q = (user_text or "").lower()
+    cat_map = {
+        "cpu": ["cpu", "cpus", "processor", "processors", "intel", "amd"],
+        "gpu": ["gpu", "gpus", "graphics", "video card", "video cards", "rtx", "gtx"],
+        "motherboard": ["motherboard", "motherboards", "mobo", "mobos"],
+        "ram": ["ram", "memory", "memories", "ddr4", "ddr5"],
+        "storage": ["storage", "ssd", "nvme", "hdd"],
+        "psu": ["psu", "power supply", "power supplies"],
+        "cpu_cooler": ["cooler", "cpu cooler", "coolers", "liquid cooler", "air cooler"]
+    }
+    for cat, triggers in cat_map.items():
+        if any(t in q for t in triggers):
+            items = data.get(cat, {})
+            if not items:
+                return f"No components found for category '{cat}'."
+            lines = [f"📦 Available {cat.upper()}s ({len(items)}):", "-" * 60]
+            # sort by name for stable output
+            for key in sorted(items.keys()):
+                info = items[key]
+                name = info.get("name", key)
+                price = info.get("price", "N/A")
+                short = []
+                if cat == "cpu":
+                    short.append(info.get("socket", ""))
+                    short.append(info.get("cores", ""))
+                if cat == "gpu":
+                    short.append(info.get("vram", ""))
+                if cat == "ram":
+                    short.append(info.get("capacity", ""))
+                    short.append(info.get("ram_type", ""))
+                # compact short spec
+                short_spec = " • ".join([s for s in short if s])
+                lines.append(f"- {name} — {short_spec} — {price}")
+            return "\n".join(lines)
+    return None
+
+
+# Intent detector for educational queries
+EDU_KEYWORDS = [
+    "explain", "what is", "how does", "list", "show",
+    "pcie", "ddr4", "ddr5", "socket", "am4", "am5", "lga1700",
+    "80+", "psu", "nvme", "sata", "tdp", "form factor", "overclock"
+]
+
+
+def is_education_request(user_text):
+    t = (user_text or "").lower()
+    # Only treat as education if clear educational keywords present (avoid compare/versus)
+    for kw in EDU_KEYWORDS:
+        if re.search(r'\b' + re.escape(kw) + r'\b', t):
+            return True
+    # explicitly exclude compare-like words here
+    if re.search(r'\b(explain|what is|how does)\b', t):
+        return True
+    return False
+
+
+def handle_education_request(user_text):
+    # Try concept explanation first
+    explanation = explain_concept(user_text)
+    if explanation:
+        print("\n🤖 ARIA — Educational Explanation:\n")
+        print(explanation)
+        print("\n" + "-" * 60 + "\n")
+        return
+
+    # Then try listing components
+    listing = list_components_by_category(user_text)
+    if listing:
+        print("\n🤖 ARIA — Component List:\n")
+        print(listing)
+        print("\n" + "-" * 60 + "\n")
+        return
+
+    # Fallback: brief help about available educational topics
+    topics = ", ".join([v["title"] for v in EDU_EXPLANATIONS.values()])
+    print("\n🤖 ARIA — Educational Help:\n")
+    print("I can explain topics such as: " + topics + ".")
+    print("Try: 'Explain PCIe 4.0', 'What is DDR5?', 'What is an AM4 socket?', or 'List GPUs'.")
+    print("\n" + "-" * 60 + "\n")
+
+
+# -------------------------------
+# 🛠️ Build Planning Features
+# -------------------------------
+# Budget tiers (bounds inclusive)
+BUILD_TIERS = {
+    "budget": (15000, 20000),
+    "entry": (25000, 35000),
+    "mid": (40000, 60000),
+    "high": (70000, 10**9),
+}
+
+# -------------------------------
+# . Build Planning / Budget Logic
+# -------------------------------
+
+
+def parse_budget_from_text(text):
+    """
+    Robust budget parser:
+    - Normalizes unicode (handles NBSP etc.)
+    - Accepts currency markers (₱ / php / peso)
+    - Accepts numbers with commas/spaces (e.g., '₱20,000', '₱ 20 000')
+    - Accepts 'k' shorthand when context implies budget
+    Returns integer PHP amount or None.
+    """
+    if not text:
+        return None
+    t = str(text)
+
+    # Normalize unicode (turn NBSP into normal space, normalize composed chars)
+    t = unicodedata.normalize("NFKC", t)
+    t = t.replace("\u00A0", " ")  # NBSP -> space
+    lower = t.lower()
+
+    # If explicit currency marker present, try to extract first numeric token
+    if "₱" in lower or "php" in lower or "peso" in lower:
+        # remove currency words, keep digits, ., k, commas, spaces
+        s = re.sub(r'(₱|php|peso)', ' ', lower)
+        # find number with optional k
+        m = re.search(
+            r'(\d{1,3}(?:[,\s]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)(\s*[kK])?', s)
+        if m:
+            num_s = m.group(1).replace(",", "").replace(" ", "")
             try:
-                query_embedding = self.model.encode(
-                    query, convert_to_tensor=True)
-                similarities = util.cos_sim(
-                    query_embedding, self.embeddings)[0]
-
-                best_match_idx = torch.argmax(similarities).item()
-                best_score = similarities[best_match_idx].item()
-
-                if best_score > 0.3:
-                    component_key = self.component_names[best_match_idx]
-                    component = self.components_db[component_key]
-                    return component, best_score
-
-            except Exception as e:
-                print(f"Semantic search error: {e}")
-
-        return None, 0.0
-
-    def check_compatibility(self, component1_name, component2_name):
-        """Check compatibility between two components and explain why"""
-        comp1, score1 = self.find_component(component1_name)
-        comp2, score2 = self.find_component(component2_name)
-
-        if not comp1 or not comp2:
-            return f"I couldn't find one or both components. Please check the names."
-
-        comp1_type = comp1['type']
-        comp2_type = comp2['type']
-
-        # CPU-Motherboard Compatibility (FIXED)
-        if (comp1_type == 'CPU' and comp2_type == 'Motherboard') or (comp1_type == 'Motherboard' and comp2_type == 'CPU'):
-            cpu = comp1 if comp1_type == 'CPU' else comp2
-            mobo = comp2 if comp2_type == 'Motherboard' else comp1
-
-            cpu_socket = cpu.get('socket', '').strip()
-            mobo_socket = mobo.get('socket', '').strip()
-
-            if cpu_socket and mobo_socket:
-                if cpu_socket == mobo_socket:
-                    return f"✅ COMPATIBLE\n{cpu['name']} fits {mobo['name']}\n\nWhy: Same socket type ({cpu_socket}) means physical and electrical compatibility."
-                else:
-                    return f"❌ NOT COMPATIBLE\n{cpu['name']} doesn't fit {mobo['name']}\n\nWhy: Different socket types ({cpu_socket} vs {mobo_socket}) - physically incompatible."
-            else:
-                return f"❓ CANNOT DETERMINE\nMissing socket information for compatibility check."
-
-        # Motherboard-RAM Compatibility (FIXED)
-        elif (comp1_type == 'Motherboard' and comp2_type == 'RAM') or (comp1_type == 'RAM' and comp2_type == 'Motherboard'):
-            mobo = comp1 if comp1_type == 'Motherboard' else comp2
-            ram = comp2 if comp2_type == 'RAM' else comp1
-
-            mobo_ram_type = mobo.get('ram', '').upper()
-            ram_type = ram.get('memory_type', '').upper()
-
-            if ram_type and mobo_ram_type:
-                if ram_type in mobo_ram_type:
-                    return f"✅ COMPATIBLE\n{ram['name']} works with {mobo['name']}\n\nWhy: RAM type ({ram_type}) matches motherboard support ({mobo_ram_type})."
-                else:
-                    return f"❌ NOT COMPATIBLE\n{ram['name']} doesn't work with {mobo['name']}\n\nWhy: Different RAM generations ({ram_type} vs {mobo_ram_type}) - physically incompatible."
-            else:
-                return f"❓ CANNOT DETERMINE\nMissing RAM type information."
-
-        # PSU-GPU Compatibility (Power) - IMPROVED
-        elif (comp1_type == 'PSU' and comp2_type == 'GPU') or (comp1_type == 'GPU' and comp2_type == 'PSU'):
-            psu = comp1 if comp1_type == 'PSU' else comp2
-            gpu = comp2 if comp2_type == 'GPU' else comp1
-
-            # Extract wattage numbers more reliably
-            psu_wattage_match = re.findall(r'\d+', psu.get('wattage', '0W'))
-            psu_wattage = int(psu_wattage_match[0]) if psu_wattage_match else 0
-
-            gpu_power_match = re.findall(r'\d+', gpu.get('power', '0W'))
-            gpu_power = int(gpu_power_match[0]) if gpu_power_match else 0
-
-            if psu_wattage == 0 or gpu_power == 0:
-                return f"❓ CANNOT DETERMINE\nMissing power information for {gpu['name']} or {psu['name']}."
-
-            if psu_wattage >= gpu_power + 200:
-                return f"✅ COMPATIBLE\n{psu['name']} can easily power {gpu['name']}\n\nWhy: PSU has sufficient wattage ({psu_wattage}W) for GPU ({gpu_power}W) with good safety margin."
-            elif psu_wattage >= gpu_power + 100:
-                return f"⚠️ BORDERLINE COMPATIBLE\n{psu['name']} should work with {gpu['name']}\n\nWhy: PSU wattage ({psu_wattage}W) is adequate for GPU ({gpu_power}W) but consider higher wattage for future upgrades."
-            else:
-                return f"❌ NOT COMPATIBLE\n{psu['name']} is too weak for {gpu['name']}\n\nWhy: PSU ({psu_wattage}W) doesn't have enough power for GPU ({gpu_power}W). Minimum recommended: {gpu_power + 150}W."
-
-        # PSU-CPU Compatibility - IMPROVED
-        elif (comp1_type == 'PSU' and comp2_type == 'CPU') or (comp1_type == 'CPU' and comp2_type == 'PSU'):
-            psu = comp1 if comp1_type == 'PSU' else comp2
-            cpu = comp2 if comp2_type == 'CPU' else comp1
-
-            psu_wattage_match = re.findall(r'\d+', psu.get('wattage', '0W'))
-            psu_wattage = int(psu_wattage_match[0]) if psu_wattage_match else 0
-
-            cpu_tdp_match = re.findall(r'\d+', cpu.get('tdp', '0W'))
-            cpu_tdp = int(cpu_tdp_match[0]) if cpu_tdp_match else 0
-
-            if psu_wattage == 0 or cpu_tdp == 0:
-                return f"❓ CANNOT DETERMINE\nMissing power information for {cpu['name']} or {psu['name']}."
-
-            if psu_wattage >= cpu_tdp + 400:
-                return f"✅ COMPATIBLE\n{psu['name']} is excellent for {cpu['name']}\n\nWhy: PSU has plenty of power ({psu_wattage}W) for CPU ({cpu_tdp}W) and additional components."
-            elif psu_wattage >= cpu_tdp + 200:
-                return f"⚠️ ADEQUATE\n{psu['name']} is sufficient for {cpu['name']}\n\nWhy: PSU wattage ({psu_wattage}W) works for CPU ({cpu_tdp}W) but consider total system power including GPU."
-            else:
-                return f"❌ NOT RECOMMENDED\n{psu['name']} is too weak for {cpu['name']} with dedicated GPU\n\nWhy: PSU ({psu_wattage}W) doesn't leave enough power for other components."
-
-        # CPU-GPU Compatibility (General)
-        elif (comp1_type == 'CPU' and comp2_type == 'GPU') or (comp1_type == 'GPU' and comp2_type == 'CPU'):
-            cpu = comp1 if comp1_type == 'CPU' else comp2
-            gpu = comp2 if comp2_type == 'GPU' else comp1
-            return f"✅ COMPATIBLE\n{cpu['name']} and {gpu['name']} work together\n\nWhy: All modern CPUs and GPUs are compatible via PCIe slots."
-
-        # Motherboard-Storage Compatibility - IMPROVED
-        elif (comp1_type == 'Motherboard' and comp2_type == 'Storage') or (comp1_type == 'Storage' and comp2_type == 'Motherboard'):
-            mobo = comp1 if comp1_type == 'Motherboard' else comp2
-            storage = comp2 if comp2_type == 'Storage' else comp1
-
-            storage_interface = storage.get('interface', '').upper()
-
-            if 'M.2' in storage_interface or 'NVMe' in storage_interface:
-                return f"✅ COMPATIBLE\n{storage['name']} works with {mobo['name']}\n\nWhy: NVMe SSDs use standard M.2 slots available on modern motherboards."
-            elif 'SATA' in storage_interface:
-                return f"✅ COMPATIBLE\n{storage['name']} works with {mobo['name']}\n\nWhy: SATA is universal standard for storage devices."
-
-        # Case Fan compatibility (works with any motherboard)
-        elif (comp1_type == 'Case Fan' and comp2_type == 'Motherboard') or (comp1_type == 'Motherboard' and comp2_type == 'Case Fan'):
-            fan = comp1 if comp1_type == 'Case Fan' else comp2
-            mobo = comp2 if comp2_type == 'Motherboard' else comp1
-            return f"✅ COMPATIBLE\n{fan['name']} works with {mobo['name']}\n\nWhy: Case fans use standard motherboard fan headers."
-
-        # CPU Cooler compatibility (check sockets) - FIXED
-        elif (comp1_type == 'CPU Cooler' and comp2_type == 'CPU') or (comp1_type == 'CPU' and comp2_type == 'CPU Cooler'):
-            cooler = comp1 if comp1_type == 'CPU Cooler' else comp2
-            cpu = comp2 if comp2_type == 'CPU' else comp1
-
-            cpu_socket = cpu.get('socket', '').strip()
-            cooler_sockets = cooler.get('sockets', '')
-
-            if cpu_socket and cooler_sockets:
-                if cpu_socket in cooler_sockets:
-                    return f"✅ COMPATIBLE\n{cooler['name']} works with {cpu['name']}\n\nWhy: Cooler supports {cpu_socket} socket."
-                else:
-                    return f"❌ NOT COMPATIBLE\n{cooler['name']} doesn't work with {cpu['name']}\n\nWhy: Cooler doesn't support {cpu_socket} socket."
-            else:
-                return f"❓ CANNOT DETERMINE\nMissing socket information for compatibility check."
-
-        # General compatibility for same type components
-        elif comp1_type == comp2_type:
-            return f"❌ NOT COMPATIBLE\n{comp1['name']} and {comp2['name']} are both {comp1_type}s\n\nWhy: You can't use two {comp1_type}s of the same type together."
-
-        # Default - assume compatible for other combinations
-        return f"✅ LIKELY COMPATIBLE\n{comp1['name']} and {comp2['name']} should work together\n\nWhy: Standard PC components are generally compatible."
-
-    def calculate_psu_wattage(self, cpu_model, gpu_model, other_components=None):
-        """Calculate recommended PSU wattage based on components"""
-
-        # Find Components
-        cpu, cpu_score = self.find_component(cpu_model)
-        gpu, gpu_score = self.find_component(gpu_model)
-
-        if not cpu or not gpu:
-            return "I couldn't find one or both components. Please check the names."
-
-        # Extract power consumption
-        cpu_power = 0
-        gpu_power = 0
-
-        # Extract CPU power from TDP
-        cpu_tdp_match = re.findall(r'\d+', cpu.get('tdp', '0W'))
-        if cpu_tdp_match:
-            cpu_power = int(cpu_tdp_match[0])
-
-        gpu_power_match = re.findall(r'\d+', gpu.get('power', '0W'))
-        if gpu_power_match:
-            gpu_power = int(gpu_power_match[0])
-
-        # Base power for other components
-        base_power = 100  # Motherboard, RAM, storage, fans
-
-        # Calculate total power consumption
-        total_power = cpu_power + gpu_power + base_power
-
-        # Calculate recommended PSU with safety margin
-        safety_margin = total_power * 0.3  # 30% safety margin
-        recommended_psu = total_power + safety_margin
-
-        # Round up to nearest standard PSU wattage
-        standard_wattages = [450, 550, 650, 750, 850, 1000]
-        final_recommendation = min(
-            [w for w in standard_wattages if w >= recommended_psu], default=850)
-
-        response = f"""⚡ PSU Wattage Calculation for {cpu['name']} + {gpu['name']}:
-        
-        📊 Power Breakdown:
-• CPU ({cpu['name']}): {cpu_power}W
-• GPU ({gpu['name']}): {gpu_power}W  
-• Other components (mobo, RAM, storage, fans): ~100W
-• Total estimated power: {total_power}W
-
-💡 Recommended PSU:
-• Minimum: {total_power + 100}W
-• Recommended: {final_recommendation}W (with 30% safety margin)
-
-🎯 Why {final_recommendation}W?
-• Provides headroom for peak power spikes
-• Allows for future upgrades
-• More efficient operation (PSUs run best at 50-80% load)
-• Choose 80+ Bronze, Gold, or better for reliability
-
-🔧 Tip: Always choose quality PSU brands like Corsair, Seasonic, Cooler Master, etc."""
-
-        return response
-
-    def generate_exact_value_response(self, user_message, component):
-        """Generate EXACT VALUE ONLY based on what user asked - FIXED LOGIC ORDER"""
-        user_lower = user_message.lower()
-
-        # FULL DETAILS REQUEST - Highest priority
-        if any(word in user_lower for word in ['details', 'specs', 'specifications', 'full', 'everything', 'all', 'specification, spec']):
-            response = f"{component['name']} ({component['type']})\n\n"
-
-            # Add all available fields
-            for key, value in component.items():
-                if key not in ['name', 'type']:
-                    response += f"{key.title()}: {value}\n"
-            return response
-
-        # COMPONENT TYPE REQUEST - High priority
-        if any(word in user_lower for word in ['what type', 'component type', 'type of']):
-            return f"{component['type']}"
-
-        # SPECIFIC ATTRIBUTE QUESTIONS - Grouped by priority
-
-        # 1. POWER RELATED (TDP, Wattage, Power) - HIGH PRIORITY
-        if any(word in user_lower for word in ['tdp']):
-            if 'tdp' in component:
-                return f"{component['tdp']}"
-
-        if any(word in user_lower for word in ['wattage', 'watts', 'power']):
-            if 'power' in component:
-                return f"{component['power']}"
-            elif 'wattage' in component:
-                return f"{component['wattage']}"
-            elif 'tdp' in component:
-                return f"{component['tdp']}"
-
-        # 2. RAM SPECIFIC ATTRIBUTES
-        if any(word in user_lower for word in ['capacity']):
-            if 'capacity' in component:
-                return f"{component['capacity']}"
-
-        if any(word in user_lower for word in ['speed']):
-            if 'speed' in component:
-                return f"{component['speed']}"
-
-        if any(word in user_lower for word in ['memory type', 'memory']):
-            if 'memory_type' in component:
-                return f"{component['memory_type']}"
-
-        # 3. MOTHERBOARD SPECIFIC ATTRIBUTES
-        if any(word in user_lower for word in ['chipset']):
-            if 'chipset' in component:
-                return f"{component['chipset']}"
-
-        if any(word in user_lower for word in ['socket']):
-            if 'socket' in component:
-                return f"{component['socket']}"
-
-        if any(word in user_lower for word in ['form', 'form factor', 'size', 'atx', 'micro-atx', 'mini-itx']):
-            if 'form' in component:
-                return f"{component['form']}"
-
-        if any(word in user_lower for word in ['ram', 'memory support']):
-            if 'ram' in component:
-                return f"{component['ram']}"
-
-        # 4. STORAGE SPECIFIC ATTRIBUTES
-        if any(word in user_lower for word in ['storage', 'sata', 'm.2', 'nvme']):
-            if component['type'] == 'Motherboard':
-                return "This motherboard has multiple SATA ports and M.2 slots for storage devices"
-            elif 'capacity' in component:
-                return f"{component['capacity']}"
-            elif 'interface' in component:
-                return f"{component['interface']}"
-
-        if any(word in user_lower for word in ['interface']):
-            if 'interface' in component:
-                return f"{component['interface']}"
-
-        # 5. GPU SPECIFIC ATTRIBUTES
-        if any(word in user_lower for word in ['vram', 'video memory', 'graphics memory']):
-            if 'vram' in component:
-                return f"{component['vram']}"
-
-        if any(word in user_lower for word in ['clock', 'speed', 'frequency', 'boost', 'ghz', 'mhz']):
-            if 'clock' in component:
-                return f"{component['clock']}"
-            elif 'speed' in component:
-                return f"{component['speed']}"
-
-        # 6. CPU SPECIFIC ATTRIBUTES
-        if any(word in user_lower for word in ['cores', 'threads', 'core count', 'core']):
-            if 'cores' in component:
-                return f"{component['cores']}"
-
-        # 7. PSU SPECIFIC ATTRIBUTES
-        if any(word in user_lower for word in ['efficiency', '80 plus', 'gold', 'bronze']):
-            if 'efficiency' in component:
-                return f"{component['efficiency']}"
-
-        if any(word in user_lower for word in ['modular', 'cable management']):
-            if 'modular' in component:
-                return f"{component['modular']}"
-
-        # 8. COOLERS & FANS SPECIFIC ATTRIBUTES
-        if any(word in user_lower for word in ['cooler type', 'cooling type']):
-            if 'cooler_type' in component:
-                return f"{component['cooler_type']}"
-
-        if any(word in user_lower for word in ['fan size', 'size']):
-            if 'fan_size' in component:
-                return f"{component['fan_size']}"
-            elif 'size' in component:
-                return f"{component['size']}"
-
-        if any(word in user_lower for word in ['rpm', 'rotation']):
-            if 'rpm' in component:
-                return f"{component['rpm']}"
-
-        if any(word in user_lower for word in ['airflow', 'cfm']):
-            if 'airflow' in component:
-                return f"{component['airflow']}"
-
-        if any(word in user_lower for word in ['noise', 'dba', 'sound']):
-            if 'noise' in component:
-                return f"{component['noise']}"
-
-        # 9. PRICE - Check before default
-        if any(word in user_lower for word in ['price', 'cost', 'how much', 'magkano', 'presyo']):
-            if 'price' in component:
-                return f"{component['price']}"
-
-        # 10. COMPATIBILITY
-        if any(word in user_lower for word in ['compatibility', 'compatible', 'works with']):
-            if 'compatibility' in component:
-                return f"{component['compatibility']}"
-
-        # DEFAULT: Return component name if no specific attribute found
-        return f"{component['name']}"
-
-    # get_build_recommendation
-
-    def get_build_recommendation(self, build_type, budget_range=None):
-        """Return PC build recommendations USING ONLY EXISTING COMPONENTS"""
-        if not build_type or build_type not in ['budget', 'entry', 'mid', 'high']:
-            return None
-
-        build_presets = {
-            "budget": {
-                "name": "💸 Ultra Budget PC",
-                "budget": "₱15,000 - ₱20,000",
-                "target": "Basic Computing, School, Office Work",
-                "description": "Most affordable build for essential computing",
-                "components": {
-                    "CPU": "AMD Ryzen 3 3200G",  # FROM YOUR DATA
-                    "GPU": "Integrated Graphics (from CPU)",
-                    "Motherboard": "RAMSTA RS-B450MP",  # FROM YOUR DATA
-                    "RAM": "HKCMEMORY HU40 DDR4 (8GB)",  # FROM YOUR DATA
-                    "Storage": "Crucial MX500 500GB",  # FROM YOUR DATA
-                    "PSU": "Seasonic Focus Plus Gold 550W",  # FROM YOUR DATA
-                    "Case Fan": "COOLMOON YX120"  # FROM YOUR DATA
-                },
-                "performance": "• Web Browsing: Smooth\n• Office Apps: Fast\n• Light Gaming: Basic esports games\n• Video Streaming: 1080p",
-                "upgrade_path": "Add more RAM or upgrade CPU later"
-            },
-
-            "entry": {
-                "name": "🎮 Entry Level Gaming PC",
-                "budget": "₱25,000 - ₱35,000",
-                "target": "1080p Gaming, Esports, School/Work",
-                "description": "Perfect for beginners and budget gaming",
-                "components": {
-                    "CPU": "AMD Ryzen 5 5600G",  # FROM YOUR DATA
-                    "GPU": "Integrated Graphics (from CPU)",
-                    "Motherboard": "ASUS PRIME B550M-K",  # FROM YOUR DATA
-                    # FROM YOUR DATA (8GB or 16GB)
-                    "RAM": "Kingston FURY Beast DDR4",
-                    "Storage": "Crucial MX500 500GB",  # FROM YOUR DATA
-                    "PSU": "Seasonic Focus Plus Gold 550W",  # FROM YOUR DATA
-                    "Case Fan": "COOLMOON YX120"  # FROM YOUR DATA
-                },
-                "performance": "• Valorant: 100+ FPS\n• Dota 2: 80+ FPS\n• GTA V: 60 FPS (Medium)\n• Perfect for school/work",
-                "upgrade_path": "Add GPU like GTX 750 Ti or RTX 3050 later"
-            },
-
-            "mid": {
-                "name": "⚡ Mid-Range Gaming PC",
-                "budget": "₱45,000 - ₱60,000",
-                "target": "1440p Gaming, Streaming, Content Creation",
-                "description": "Great balance of performance and value",
-                "components": {
-                    "CPU": "Intel Core i5-14600K",  # FROM YOUR DATA
-                    "GPU": "MSI RTX 4060 GAMING X",  # FROM YOUR DATA
-                    "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
-                    "RAM": "HKCMEMORY HU40 DDR4 (16GB)",  # FROM YOUR DATA
-                    "Storage": "Samsung 970 EVO Plus 1TB",  # FROM YOUR DATA
-                    "PSU": "Corsair CX650",  # FROM YOUR DATA
-                    "CPU Cooler": "Cooler Master Hyper 212 Black Edition",  # FROM YOUR DATA
-                    "Case Fan": "Cooler Master SickleFlow 120 ARGB"  # FROM YOUR DATA
-                },
-                "performance": "• Cyberpunk 2077: 60+ FPS (High)\n• Streaming: Smooth 1080p60\n• AAA Games: High settings 1440p\n• Video Editing: Fast rendering",
-                "upgrade_path": "Add more storage or better cooling"
-            },
-
-            "high": {
-                "name": "🔥 High-End Gaming PC",
-                "budget": "₱70,000 - ₱100,000+",
-                "target": "4K Gaming, Professional Work, Streaming",
-                "description": "Premium performance for enthusiasts",
-                "components": {
-                    "CPU": "Intel Core i7-14700K",  # FROM YOUR DATA
-                    "GPU": "Sapphire RX 9060 XT 16GB",  # FROM YOUR DATA
-                    "Motherboard": "MSI B760M Gaming Plus WiFi DDR4",  # FROM YOUR DATA
-                    # FROM YOUR DATA (32GB total)
-                    "RAM": "HKCMEMORY HU40 DDR4 (16GB) x2",
-                    "Storage": "Samsung 970 EVO Plus 1TB + Western Digital Blue 2TB",  # FROM YOUR DATA
-                    "PSU": "Corsair RM850x",  # FROM YOUR DATA
-                    "CPU Cooler": "Deepcool LE500 MARRS",  # FROM YOUR DATA
-                    "Case Fan": "Arctic P12 PWM PST"  # FROM YOUR DATA
-                },
-                "performance": "• 4K Gaming: 60+ FPS Ultra\n• Streaming: 4K capable\n• 3D Rendering: Professional grade\n• VR Ready: Excellent performance",
-                "upgrade_path": "Top-tier components as needed"
-            }
-        }
-        return build_presets.get(build_type.lower())
-
-    # suggest_build_type
-
-    def suggest_build_type(self, user_message):
-        """Auto-detect what build type user wants"""
-        user_lower = user_message.lower()
-
-        build_trigger_words = [
-            'build', 'pc build', 'recommend', 'suggest', 'setup', 'rig', 'system', 'pc']
-        if not any(keyword in user_lower for keyword in build_trigger_words):
-            return None
-
-         # BUDGET
-        if any(word in user_lower for word in ['15', '15k', '15,000', '15000', '16', '17', '18', '19']):
-            return "budget"
-        elif any(word in user_lower for word in ['20', '25', '30', '35', '20k', '25k', '30k', '35k', '20,000', '25,000', '30,000', '35,000']):
-            return "entry"
-        elif any(word in user_lower for word in ['45', '50', '55', '60', '45k', '50k', '60k', '45,000', '50,000', '55,000', '60,000']):
-            return "mid"
-        elif any(word in user_lower for word in ['70', '80', '90', '100', '70k', '80k', '100k', '70,000', '80,000', '90,000', '100,000']):
-            return "high"
-
-        build_keywords_mapping = {
-            "budget": ['ultra budget', 'very cheap', 'minimum', 'basic computing', 'office pc', 'budget', 'cheap', 'low cost', 'economy', 'affordable', 'basic'],
-            "entry": ['entry', 'starter', 'beginner', 'gaming'],
-            "mid": ['mid', 'medium', 'mid-range', 'balanced', 'all-rounder', 'mainstream', 'standard'],
-            "high": ['high', 'premium', 'high-end', 'best', 'pro', 'enthusiast', 'streaming', '4k']
-        }
-
-        build_scores = {}
-        for build_type, keywords in build_keywords_mapping.items():
-            score = sum(1 for keyword in keywords if keyword in user_lower)
-            if score > 0:
-                build_scores[build_type] = score
-
-        if build_scores:
-            return max(build_scores.items(), key=lambda x: x[1])[0]
-
-        return None
-
-    # verify_build_compatibility
-    def verify_build_compatibility(self, build_type):
-        """Verify that recommended build components are compatible"""
-        build = self.get_build_recommendation(build_type)
-        if not build:
-            return "Build not found"
-
-        issues = []
-        components = build['components']
-
-        cpu = components.get('CPU')
-        motherboard = components.get('Motherboard')
-        if cpu and motherboard:
-            cpu_info, _ = self.find_component(cpu)
-            mobo_info, _ = self.find_component(motherboard)
-            if cpu_info and mobo_info:
-                if cpu_info.get('socket') != mobo_info.get('socket'):
-                    issues.append(
-                        f"❌ CPU {cpu_info['socket']} not compatible with motherboard {mobo_info['socket']}")
-
-        # Check Ram-MOBO compatibility
-        ram = components.get('RAM')
-        if ram and motherboard:
-            ram_info, _ = self.find_component(
-                ram.split(' x2')[0])  # Handle "x2" notation
-            mobo_info, _ = self.find_component(motherboard)
-            if ram_info and mobo_info:
-                ram_type = ram_info.get('memory_type', '')
-                mobo_ram = mobo_info.get('ram', '')
-                if ram_type not in mobo_ram:
-                    issues.append(
-                        f"❌ RAM type {ram_type} not supported by motherboard")
-
-        return issues if issues else ["✅ All components are compatible!"]
-
-    # Compare_builds
-    def compare_builds(self, build1_type, build2_type):
-        """Compare two build types"""
-        build1 = self.get_build_recommendation(build1_type)
-        build2 = self.get_build_recommendation(build2_type)
-
-        if not build1 or not build2:
-            return "Cannot compare those build types."
-
-        comparison = f"🆚 {build1['name']} vs {build2['name']}\n\n"
-        comparison += f"💰 Budget:\n• {build1['name']}: {build1['budget']}\n• {build2['name']}: {build2['budget']}\n\n"
-
-        # Target audience comparison
-        comparison += f"🎯 Best For:\n• {build1['name']}: {build1['target']}\n• {build2['name']}: {build2['target']}\n\n"
-
-        comparison += "🔧 Main Differences:\n"
-
-        # CPU Comparison
-        cpu1 = build1['components'].get('CPU', 'N/A')
-        cpu2 = build2['components'].get('CPU', 'N/A')
-        if cpu1 != cpu2:
-            comparison += f"• **CPU**: {cpu1} vs {cpu2}\n"
-
-        # GPU Comparison
-        gpu1 = build1['components'].get('GPU', 'N/A')
-        gpu2 = build2['components'].get('GPU', 'N/A')
-        if gpu1 != gpu2:
-            comparison += f"• GPU: {gpu1} vs {gpu2}\n"
-
-        # RAM Comparison
-        ram1 = build1['components'].get('RAM', 'N/A')
-        ram2 = build2['components'].get('RAM', 'N/A')
-        if ram1 != ram2:
-            comparison += f"• RAM: {ram1} vs {ram2}\n"
-
-          # Storage Comparison
-        storage1 = build1['components'].get('Storage', 'N/A')
-        storage2 = build2['components'].get('Storage', 'N/A')
-        if storage1 != storage2:
-            comparison += f"• Storage: {storage1} vs {storage2}\n"
-
-            # PSU Comparison
-        psu1 = build1['components'].get('PSU', 'N/A')
-        psu2 = build2['components'].get('PSU', 'N/A')
-        if psu1 != psu2:
-            comparison += f"• PSU: {psu1} vs {psu2}\n"
-
-        comparison += f"\n🎮 **Performance Summary**:\n"
-
-        if build1_type == "entry" and build2_type == "mid":
-            comparison += "• Entry: Esports games, 1080p Medium\n• **Mid**: AAA games, 1440p High, Streaming\n"
-            comparison += "• **Upgrade**: Entry → Mid adds dedicated GPU\n"
-
-        elif build1_type == "mid" and build2_type == "high":
-            comparison += "• Mid: Great 1440p gaming, casual streaming\n• **High**: 4K gaming, professional streaming\n"
-            comparison += "• Upgrade: Mid → High improves CPU & GPU\n"
-
-        elif build1_type == "entry" and build2_type == "high":
-            comparison += "• Entry: Basic gaming, school/work\n• **High**: Premium gaming, content creation\n"
-            comparison += "• Upgrade: Major performance jump\n"
-
-        comparison += f"\n💡 **Recommendation**:\n"
-        if build1_type == "entry" and build2_type == "mid":
-            comparison += "Choose **Entry** if: Budget < ₱35K, casual gaming\nChoose **Mid** if: Budget ₱45K+, serious gaming/streaming"
-        elif build1_type == "mid" and build2_type == "high":
-            comparison += "Choose **Mid** if: Budget ₱45K-60K, great value\nChoose **High** if: Budget ₱70K+, premium experience"
-        elif build1_type == "entry" and build2_type == "high":
-            comparison += "Choose **Entry** if: First build, learning PC building\nChoose **High** if: Experienced, want best performance"
-
-        return comparison
-
-    def check_previous_training(self, user_query):
-        """Check if we have the exact same query in training data"""
-        for example in self.training_data:
-            if user_query.lower() == example['user_query'].lower():
-                return example['ai_response']
-        return None
-
-    def generate_response(self, user_message):
-        """Generate AI response based on user message"""
+                num = float(num_s)
+                if m.group(2):  # has 'k'
+                    return int(num * 1000)
+                return int(num)
+            except:
+                pass
+
+    # If no explicit currency words, accept '25k' when there's build/budget context
+    if re.search(r'\b(budget|buy|price|cost|php|₱|peso|recommend|suggest|for)\b', lower):
+        # match forms like '25k', '25 k', '25000'
+        m = re.search(r'(\d+(?:[\.,]\d+)?)[\s]*([kK])\b', lower)
+        if m:
+            try:
+                val = float(m.group(1).replace(',', '.'))
+                if 0 < val <= 2000:  # sanity cap
+                    return int(val * 1000)
+            except:
+                pass
+        # fallback to plain number with commas
+        m2 = re.search(r'(\d{1,3}(?:[,\s]\d{3})+|\d+)', lower)
+        if m2:
+            num_s = m2.group(1).replace(",", "").replace(" ", "")
+            try:
+                return int(float(num_s))
+            except:
+                pass
+
+    # Last-resort: accept any small 'k' token alone (e.g., '25k')
+    m = re.search(r'(\d+(?:\.\d+)?)\s*[kK]\b', lower)
+    if m:
         try:
-            user_lower = user_message.lower().strip()
+            val = float(m.group(1))
+            if val <= 2000:
+                return int(val * 1000)
+        except:
+            pass
 
-            if not user_message or len(user_message.strip()) == 0:
-                return "Please type a question about PC components!"
-
-            # First, check training data for exact same query
-            previous_response = self.check_previous_training(user_message)
-            if previous_response:
-                print(f"Using training data response for: {user_message}")
-                return previous_response
-
-            vague_queries = ['capacity', 'price', 'specs', 'speed', 'tdp', 'wattage',
-                             'vram', 'clock', 'cores', 'socket', 'chipset', 'compatibility']
-            component_brands = ['kingston', 'asus', 'msi', 'gigabyte', 'corsair', 'seagate',
-                                'samsung', 'intel', 'amd', 'nvidia', 'cooler', 'thermalright']
-
-            words = user_lower.split()
-            if len(words) == 2:
-                has_attribute = any(
-                    attr in user_lower for attr in vague_queries)
-                has_brand = any(
-                    brand in user_lower for brand in component_brands)
-
-                if has_attribute and has_brand:
-                    response = "Can you be more specific? Please provide the complete component name."
-                    self.save_training_example(user_message, response)
-                    return response
-
-            # Greeting
-            if any(word in user_lower for word in ['hi', 'hello', 'hey']):
-                response = """Hello! I'm your PC Expert AI. 
-                Please type a question about PC components!"""
-                self.save_training_example(user_message, response)
-                return response
-
-            # Help
-            if 'help' in user_lower:
-                response = """Ask me questions like:
-
-• "price RTX 4060"
-• "specs Intel i9-14900K" 
-• "compatibility B550 motherboard with Ryzen 7 5700X"
-• "details ASUS PRIME B550M-K"
-• "ram B550M"
-• "storage B550M"
-• "chipset B550M"
-• "tdp i9-14900K"
-• "capacity Kingston Fury Beast DDR4"
-• "speed Kingston Fury Beast DDR4\""""
-                self.save_training_example(user_message, response)
-                return response
-
-            component_keywords = ['details', 'specs', 'specifications', 'price', 'cost', 'tdp', 'wattage',
-                                  'vram', 'clock', 'speed', 'cores', 'socket', 'chipset', 'capacity', 'compatibility']
-            build_keywords = ['build', 'pc build', 'setup', 'rig', 'system']
-
-            if any(keyword in user_lower for keyword in component_keywords):
-                component, confidence = self.find_component(user_message)
-                if component and confidence > 0.3:
-                    response = self.generate_exact_value_response(
-                        user_message, component)
-                    self.save_training_example(user_message, response)
-                    return response
-
-            # 🆕 BUILD RECOMMENDATION DETECTION
-            build_type = self.suggest_build_type(user_message)
-            if build_type:
-                build_info = self.get_build_recommendation(build_type)
-                if build_info:
-                    response = f"🖥️ {build_info['name']}\n\n"
-                    response += f"💰 Budget: {build_info['budget']}\n"
-                    response += f"🎯 Perfect For: {build_info['target']}\n"
-                    response += f"📝 Description: {build_info['description']}\n\n"
-
-                    response += "🔧 Components (from my database):\n"
-
-                    total_price = 0
-                    component_prices = []
-
-                    for comp_type, comp_name in build_info['components'].items():
-                        # Get price if available
-                        base_comp_name = comp_name.split(' x2')[0]
-                        comp_data, _ = self.find_component(base_comp_name)
-
-                        if comp_data and 'price' in comp_data:
-                            price_text = comp_data['price']
-                            # Extract numeric price value
-                            price_match = re.findall(r'₱([\d,]+)', price_text)
-                            if price_match:
-                                price_value = int(
-                                    price_match[0].replace(',', ''))
-
-                                if ' x2' in comp_name:
-                                    price_value *= 2
-                                    price_text = f"₱{price_value:,} (x2)"
-
-                                total_price += price_value
-                                component_prices.append(
-                                    f"• {comp_type}: {comp_name} - {price_text}")
-
-                            else:
-                                component_prices.append(
-                                    f"• {comp_type}: {comp_name} - {price_text}")
-
-                        else:
-                            component_prices.append(
-                                f"• {comp_type}: {comp_name} - Price not available")
-
-                    # Add all component prices to response
-                response += "\n".join(component_prices)
-
-                # Add TOTAL PRICE
-                response += f"\n\n💰 **TOTAL PRICE: ₱{total_price:,}**\n"
-
-                response += f"\n🎮 Performance:\n{build_info['performance']}\n"
-                response += f"\n🔄 Upgrade Path: {build_info['upgrade_path']}\n"
-
-                # Add compatibility check
-                compatibility = self.verify_build_compatibility(build_type)
-                response += f"\n🔍 Compatibility: {compatibility[0]}"
-
-                return response
-
-            # 🆕 BUILD COMPARISON
-            if " vs " in user_lower or "compare" in user_lower:
-                if "entry" in user_lower and "mid" in user_lower:
-                    return self.compare_builds("entry", "mid")
-                elif "mid" in user_lower and "high" in user_lower:
-                    return self.compare_builds("mid", "high")
-                elif "entry" in user_lower and "high" in user_lower:
-                    return self.compare_builds("entry", "high")
-
-            # 🆕 COMPATIBILITY CHECK FOR SPECIFIC BUILD
-            if "compatible" in user_lower and any(build in user_lower for build in ['entry', 'mid', 'high']):
-                for build in ['entry', 'mid', 'high']:
-                    if build in user_lower:
-                        issues = self.verify_build_compatibility(build)
-                        return f"🔍 {build.upper()} Build Compatibility:\n" + "\n".join(issues)
-
-            # BAGONG PSU WATTAGE CALCULATOR PATTERNS - IDAGDAG MO DITO
-            psu_patterns = [
-                (r'psu for (.+) and (.+)', 2),
-                (r'what psu for (.+) with (.+)', 2),
-                (r'power supply for (.+) and (.+)', 2),
-                (r'recommended psu for (.+) and (.+)', 2),
-                (r'wattage for (.+) and (.+)', 2),
-                (r'what wattage for (.+) and (.+)', 2),
-            ]
-
-            for pattern, num_components in psu_patterns:
-                match = re.search(pattern, user_lower)
-                if match:
-                    if num_components == 2:
-                        comp1 = match.group(1).strip()
-                        comp2 = match.group(2).strip()
-                        response = self.calculate_psu_wattage(comp1, comp2)
-                        self.save_training_example(user_message, response)
-                        return response
-
-            # Compatibility questions
-            compatibility_patterns = [
-                (r'is (.+) compatible with (.+)\??', 2),
-                (r'will (.+) work with (.+)\??', 2),
-                (r'can (.+) use with (.+)\??', 2),
-                (r'does (.+) fit (.+)\??', 2),
-                (r'compatibility of (.+) and (.+)', 2),
-                (r'compatibility between (.+) and (.+)', 2),
-            ]
-
-            for pattern, num_components in compatibility_patterns:
-                match = re.search(pattern, user_lower)
-                if match:
-                    if num_components == 2:
-                        comp1 = match.group(1).strip()
-                        comp2 = match.group(2).strip()
-
-                        response = self.check_compatibility(comp1, comp2)
-                        self.save_training_example(user_message, response)
-                        return response
-
-            # Find component
-            component, confidence = self.find_component(user_message)
-
-            if component and confidence > 0.3:
-                # Generate EXACT VALUE response based on what user asked
-                if word_count < 2 and confidence < 0.7:
-                    response = "Can you be more specific? Please provide the complete component name."
-
-                    self.save_training_example(user_message, response)
-                    return response
-
-                response = self.generate_exact_value_response(
-                    user_message, component)
-                self.save_training_example(user_message, response)
-                return response
-
-            elif component and confidence > 0.2:
-
-                response = "Can you be more specific? Please provide the complete component name."
-                self.save_training_example(user_message, response)
-                return response
-
-            elif component and confidence > 0.2:
-                response = self.generate_exact_value_response(
-                    user_message, component)
-                self.save_training_example(user_message, response)
-                return response
-
-            # Default response
-            response = "I'm not sure about that. Try asking about component specifications, compatibility, or prices. Type 'help' for examples. Please provide the complete component name."
-            self.save_training_example(user_message, response)
-            return response
-
-        except Exception as e:
-            print(f"Error in generate_response: {e}")
-            return f"Sorry, I encountered an error. Please try again with a different question."
+    return None
 
 
-def main():
-    chatbot = PCChatbot()
+def price_list_for_category(cat):
+    """Return list of tuples (key, info, price_int) for a category with numeric prices."""
+    out = []
+    items = data.get(cat, {})
+    for k, info in items.items():
+        p = parse_price(info.get("price"))
+        if p:
+            out.append((k, info, p))
+    # sort ascending price
+    out.sort(key=lambda x: x[2])
+    return out
 
-    print("\n" + "=" * 60)
-    print("PC EXPERT AI CHATBOT")
-    print("Type 'quit' to exit")
-    print("=" * 60)
 
-    while True:
-        user_input = input("\nYou: ").strip()
+def pick_motherboard_for_cpu(cpu_info, mobo_list):
+    """Return a motherboard from mobo_list compatible with cpu_info (socket match)."""
+    cpu_socket = (cpu_info.get("socket") or "").lower()
+    for k, m, p in mobo_list:
+        m_socket = (m.get("socket") or "").lower()
+        if cpu_socket and m_socket and cpu_socket == m_socket:
+            return (k, m, p)
+    # fallback: pick the cheapest if nothing matches
+    return mobo_list[0] if mobo_list else None
 
-        if user_input.lower() in ['quit', 'exit', 'bye']:
-            print("Goodbye! Your questions are saved!")
+
+def pick_ram_for_mobo(mobo_info, ram_list):
+    """Pick RAM compatible with motherboard ram_type if possible, else cheapest."""
+    mobo_ram_type = (mobo_info.get("ram_type") or "").lower()
+    for k, r, p in ram_list:
+        r_type = (r.get("ram_type") or "").lower()
+        if mobo_ram_type and r_type and mobo_ram_type in r_type:
+            return (k, r, p)
+    return ram_list[0] if ram_list else None
+
+
+def estimate_psu_requirement(cpu_info, gpu_info):
+    """Estimate PSU requirement using TDP/power plus base overhead and headroom."""
+    cpu_tdp = parse_watts(cpu_info.get("tdp")) or 0
+    gpu_power = parse_watts(gpu_info.get("power")) or 0
+    base_system = 120
+    total = cpu_tdp + gpu_power + base_system
+    recommended = math.ceil(total * 1.25)  # Adding 25% buffer for safety
+    # Ensure we get an appropriate PSU size
+    suggested_psu_size = round_up_psu(recommended)
+    return recommended, suggested_psu_size
+
+
+def handle_psu_request(user_query):
+    """
+    Handle PSU / wattage questions. Finds components in query, estimates power, and prints recommendation.
+    """
+    found = extract_components_from_text(user_query)
+    if not found:
+        print("\n🤖 ARIA says:\n\nI couldn't find the components you mentioned. Try names like 'RTX 3060' or 'Ryzen 5 5600X'.\n")
+        return
+
+    # prefer CPU + GPU pair if both present
+    cpu = None
+    gpu = None
+    others = []
+    for cat, info, key in found:
+        if cat == "cpu" and cpu is None:
+            cpu = (cat, info, key)
+        elif cat == "gpu" and gpu is None:
+            gpu = (cat, info, key)
+        else:
+            others.append((cat, info, key))
+
+    # If no explicit CPU+GPU found, take the top two matched components
+    if not cpu or not gpu:
+        combined = []
+        if cpu:
+            combined.append(cpu)
+        if gpu:
+            combined.append(gpu)
+        for item in others:
+            if len(combined) >= 2:
+                break
+            combined.append(item)
+        if len(combined) >= 2:
+            # assign from combined
+            cpu = combined[0] if combined[0][0] == "cpu" else cpu or combined[0]
+            gpu = combined[1] if combined[1][0] == "gpu" else gpu or combined[1]
+        else:
+            # only one component present
+            comp = combined[0] if combined else found[0]
+            cat, info, key = comp
+            print(
+                f"\n🤖 ARIA says:\n\nI only found one component ({info.get('name')}). To calculate PSU wattage I need at least a CPU and a GPU (or two parts). Please mention both (e.g., 'GTX 750 Ti and Ryzen 5 5600X').\n")
+            return
+
+    # Fallback: if cpu/gpu are still None, pick first two found
+    if not cpu or not gpu:
+        a = found[0]
+        b = found[1] if len(found) > 1 else None
+        if not b:
+            print(
+                "\n🤖 ARIA says:\n\nPlease mention two components to estimate PSU wattage.\n")
+            return
+        cpu, gpu = a, b
+
+    # Extract infos for estimation
+    a_cat, a_info, a_key = cpu
+    b_cat, b_info, b_key = gpu
+
+    # Use your existing estimate function (ensure order doesn't matter)
+    rec_watt, suggested_size = estimate_psu_requirement(
+        a_info if a_cat == "cpu" else b_info,
+        b_info if b_cat == "gpu" else a_info
+    )
+
+    # Print a helpful explanation
+    cpu_name = (a_info.get("name") if a_cat == "cpu" else b_info.get("name"))
+    gpu_name = (b_info.get("name") if b_cat == "gpu" else a_info.get("name"))
+
+    print("\n🤖 ARIA — PSU Recommendation:\n")
+    print(f"For {cpu_name} + {gpu_name}:")
+    print(f"• Estimated continuous system draw (approx): {rec_watt} W")
+    print(f"• Recommended PSU size (with headroom): {suggested_size} W")
+    print("\nNotes:")
+    print("• This is a conservative estimate based on TDPs and a base system overhead.")
+    print("• If you plan to overclock, add ~100W extra. If you have many drives or accessories, add 50–100W.")
+    print("• Choose a quality PSU (80+ Bronze or better) and the correct connectors for your GPU.\n")
+
+
+def handle_store_request(user_query: str):
+    """
+    Handle user queries about PC stores or locations.
+    """
+    store_name = "SMFP Computer"
+    store_address = "594 J. Nepomuceno St, Quiapo, Manila, 1001 Metro Manila"
+
+    q = user_query.lower()
+
+    # Simple detection for store/location-related questions
+    store_triggers = [
+        "store", "shop", "buy", "purchase", "where can i buy",
+        "pc store", "computer store", "smfp", "location", "branch"
+    ]
+
+    if any(word in q for word in store_triggers):
+        print(f"\n🏬 SMFP COMPUTER — STORE INFORMATION\n")
+        print(f"📍 Name: {store_name}")
+        print(f"📫 Address: {store_address}")
+        print("\n🕓 Store Hours: Usually 10:00 AM – 6:00 PM (verify before visiting).")
+        print("☎️ You can visit or contact the shop directly for part availability.\n")
+        print("-" * 60 + "\n")
+
+        # (Optional) Add to chat history
+        try:
+            add_to_history(
+                "assistant", f"Shared store info: {store_name}, {store_address}")
+        except Exception:
+            pass
+        return True
+
+    return False
+
+
+def check_compatibility(user_query):
+    """
+    Try to answer compatibility questions. Returns True if we printed an answer,
+    False if we couldn't handle (e.g., fewer than 2 components found).
+    """
+    found = extract_components_from_text(user_query)
+    if not found:
+        print("\n🤖 ARIA says:\n\nI couldn't find the components you mentioned. Try names like 'RTX 3060' or 'Ryzen 5 5600X'.\n")
+        return False
+
+    # Keep unique components (category+key) preserving order
+    seen = set()
+    comps = []
+    for cat, info, key in found:
+        iden = (cat, key)
+        if iden not in seen:
+            seen.add(iden)
+            comps.append((cat, info, key))
+        if len(comps) >= 2:
             break
 
-        if user_input:
-            response = chatbot.generate_response(user_input)
-            print(f"AI: {response}")
+    if len(comps) < 2:
+        # Not enough components to check compatibility
+        print("\n🤖 ARIA says:\n\nI need at least two components to check compatibility (for example: 'Will Ryzen 5 5600X work with B550?').\n")
+        return False
+
+    a_cat, a_info, a_key = comps[0]
+    b_cat, b_info, b_key = comps[1]
+
+    a_name = a_info.get("name", a_key)
+    b_name = b_info.get("name", b_key)
+
+    # CPU <-> Motherboard check
+    if (a_cat == "cpu" and b_cat == "motherboard") or (a_cat == "motherboard" and b_cat == "cpu"):
+        cpu_info = a_info if a_cat == "cpu" else b_info
+        mobo_info = b_info if b_cat == "motherboard" else a_info
+
+        cpu_socket = (cpu_info.get("socket") or "").lower()
+        mobo_socket = (mobo_info.get("socket") or "").lower()
+        mobo_ram = (mobo_info.get("ram_type") or "").lower()
+        cpu_ram_req = None
+        # some CPUs include compatibility text listing ram type
+        if cpu_info.get("compatibility"):
+            cpu_compat = cpu_info.get("compatibility").lower()
+            if "ddr5" in cpu_compat:
+                cpu_ram_req = "ddr5"
+            elif "ddr4" in cpu_compat:
+                cpu_ram_req = "ddr4"
+
+        print(f"\n🤖 ARIA — Compatibility Check:\n")
+        print(f"{cpu_info.get('name')}  ↔  {mobo_info.get('name')}")
+        print("-" * 60)
+
+        # socket check
+        if cpu_socket and mobo_socket:
+            if cpu_socket == mobo_socket:
+                print(f"• Socket: OK — both use {cpu_socket.upper()}.")
+            else:
+                print(
+                    f"• Socket: NOT COMPATIBLE — CPU uses {cpu_socket.upper()} while motherboard uses {mobo_socket.upper()}.")
+        else:
+            print("• Socket: Missing data for one or both components.")
+
+        # RAM type check (mobo.ram_type vs cpu.compatibility)
+        if mobo_ram:
+            if cpu_ram_req:
+                if cpu_ram_req in mobo_ram:
+                    print(
+                        f"• RAM type: OK — motherboard supports {mobo_ram.upper()} and CPU is compatible with {cpu_ram_req.upper()}.")
+                else:
+                    print(
+                        f"• RAM type: POSSIBLE ISSUE — motherboard supports {mobo_ram.upper()} but CPU looks to prefer {cpu_ram_req.upper()}.")
+            else:
+                print(
+                    f"• RAM type: Motherboard supports {mobo_ram.upper()}. Confirm CPU memory compatibility if needed.")
+        else:
+            print("• RAM type: No motherboard RAM-type info available.")
+
+        print("\nNotes:\n• Check BIOS updates for older CPUs on newer motherboards (some combos require BIOS updates).\n• Confirm physical CPU cooler mounting for the socket.\n")
+        return True
+
+    # CPU <-> RAM check
+    if (a_cat == "cpu" and b_cat == "ram") or (a_cat == "ram" and b_cat == "cpu"):
+        cpu_info = a_info if a_cat == "cpu" else b_info
+        ram_info = b_info if b_cat == "ram" else a_info
+        cpu_name = cpu_info.get("name")
+        ram_type = ram_info.get("ram_type") or ram_info.get("type") or ""
+        print(f"\n🤖 ARIA — Compatibility Check:\n")
+        print(f"{cpu_name}  ↔  {ram_info.get('name')}")
+        print("-" * 60)
+        # best-effort: check CPU compatibility field or compatibility text
+        cpu_compat = (cpu_info.get("compatibility") or "").lower()
+        if ram_type and (ram_type.lower() in cpu_compat or ram_type.lower() in (cpu_info.get("socket") or "")):
+            print(
+                f"• RAM type: Looks compatible (RAM: {ram_type}, CPU compatibility: {cpu_compat}).")
+        else:
+            if ram_type:
+                print(
+                    f"• RAM type: Motherboard/CPU compatibility unclear — RAM is {ram_type}. Check motherboard RAM support.")
+            else:
+                print("• RAM type: No RAM-type info available.")
+        print()
+        return True
+
+    # GPU <-> Motherboard check (basic)
+    if (a_cat == "gpu" and b_cat == "motherboard") or (a_cat == "motherboard" and b_cat == "gpu"):
+        gpu_info = a_info if a_cat == "gpu" else b_info
+        mobo_info = b_info if b_cat == "motherboard" else a_info
+
+        print(f"\n🤖 ARIA — Compatibility Check:\n")
+        print(f"{gpu_info.get('name')}  ↔  {mobo_info.get('name')}")
+        print("-" * 60)
+
+        # GPU slot check: look for 'slot' on gpu and assume motherboards with any PCIe support are fine
+        gpu_slot = (gpu_info.get("slot") or "").lower()
+        mobo_nvme = mobo_info.get("nvme_slots")
+        mobo_pci_note = mobo_info.get("compatibility", "").lower()
+
+        if gpu_slot:
+            # basic check: mention PCIe and slot width if present
+            print(f"• GPU slot: {gpu_slot}.")
+            # check motherboard compatibility note for PCIe support
+            if "pcie" in mobo_pci_note or mobo_nvme is not None or "pci" in mobo_pci_note:
+                print(
+                    "• Motherboard: Appears to have PCIe support — GPU should fit physically (check full-length slot and BIOS).")
+            else:
+                print(
+                    "• Motherboard: PCIe slot info not explicit — please verify the motherboard has a full-length PCIe x16 slot.")
+        else:
+            print("• GPU slot: No slot info available for GPU. Most modern motherboards have at least one PCIe x16 slot — verify motherboard specs.")
+        # power/connectors note
+        if gpu_info.get("power"):
+            print(
+                f"• GPU power: {gpu_info.get('power')} — ensure PSU has required connectors.")
+        print("\nNotes:\n• Confirm card length and clearance for your case and verify PSU connectors and wattage.\n")
+        return True
+
+    # If both components are the same category (e.g., two CPUs or two GPUs), give a short comparison hint
+    if a_cat == b_cat:
+        print(
+            f"\n🤖 ARIA says:\n\nYou mentioned two {a_cat.upper()}s: {a_name} and {b_name}.\nI can compare specs (cores, clocks, price). Try 'compare {a_key} and {b_key}'.\n")
+        return True
+
+    # Generic fallback: different categories — print their key specs and say manual check may be required
+    print(f"\n🤖 ARIA — Compatibility (best-effort):\n")
+    print(f"{a_name}  ↔  {b_name}")
+    print("-" * 60)
+    # print some key fields for manual inspection
+
+    def short_specs(info):
+        keys = []
+        for k in ("socket", "vram", "cores", "clock", "tdp", "capacity", "ram_type", "wattage"):
+            if k in info:
+                keys.append(f"{k}: {info[k]}")
+        return " • ".join(keys) if keys else "No quick specs available."
+
+    print(f"{a_name}: {short_specs(a_info)}")
+    print(f"{b_name}: {short_specs(b_info)}")
+    print("\nI couldn't identify a direct compatibility rule for these two parts. Check the detailed specs above for socket, RAM type, PCIe slot, and power connectors.\n")
+    return True
 
 
+def assemble_build_for_budget(budget):
+    """
+    Greedy assembly strategy:
+    - Allocate portions of budget to categories (CPU, GPU, MB, RAM, Storage, PSU, Cooler)
+    - Choose best-priced items from data within allocation while ensuring compat.
+    This is heuristic and uses only local data.
+    Returns dict with chosen components and totals or None if cannot assemble.
+    """
+    # if budget is small, budget allocations more towards CPU+GPU; else balanced
+    # allocation percentages (sum <=1, leave small margin)
+    # We'll attempt several allocation profiles; choose the first valid build
+    allocation_profiles = [
+        # budget-oriented (more GPU/CPU)
+        {"cpu": 0.28, "gpu": 0.32, "motherboard": 0.12, "ram": 0.08,
+            "storage": 0.08, "psu": 0.06, "cooler": 0.06},
+        # balanced
+        {"cpu": 0.25, "gpu": 0.30, "motherboard": 0.12, "ram": 0.10,
+            "storage": 0.10, "psu": 0.07, "cooler": 0.06},
+        # CPU-focused (for productivity)
+        {"cpu": 0.32, "gpu": 0.24, "motherboard": 0.12, "ram": 0.12,
+            "storage": 0.10, "psu": 0.06, "cooler": 0.04},
+    ]
+
+    cpus = price_list_for_category("cpu")
+    gpus = price_list_for_category("gpu")
+    mobos = price_list_for_category("motherboard")
+    rams = price_list_for_category("ram")
+    storages = price_list_for_category("storage")
+    psus = price_list_for_category("psu")
+    coolers = price_list_for_category("cpu_cooler")
+
+    if not cpus or not mobos or not rams:
+        return None  # missing essential categories in DB
+
+    for profile in allocation_profiles:
+        budget_cpu = int(budget * profile["cpu"])
+        budget_gpu = int(budget * profile["gpu"])
+        budget_mobo = int(budget * profile["motherboard"])
+        budget_ram = int(budget * profile["ram"])
+        budget_storage = int(budget * profile["storage"])
+        budget_psu = int(budget * profile["psu"])
+        budget_cooler = int(budget * profile["cooler"])
+
+        # pick CPU: choose the most expensive CPU <= budget_cpu (or if none, pick cheapest)
+        cpu_choice = None
+        for k, info, p in reversed(cpus):
+            if p <= budget_cpu:
+                cpu_choice = (k, info, p)
+                break
+        if not cpu_choice:
+            cpu_choice = cpus[0]  # fallback to cheapest
+
+        # pick motherboard compatible with chosen cpu
+        mobo_choice = pick_motherboard_for_cpu(cpu_choice[1], mobos)
+        # avoid wildly expensive mobos
+        if mobo_choice and mobo_choice[2] > (budget_mobo * 2):
+            # if mobo is much more than allocation, try to pick cheaper mobo of same socket
+            socket = (cpu_choice[1].get("socket") or "").lower()
+            candidate = None
+            for k, m, p in mobos:
+                if (m.get("socket") or "").lower() == socket:
+                    candidate = (k, m, p)
+                    break
+            mobo_choice = candidate or mobo_choice
+
+        # pick RAM that matches mobo
+        ram_choice = pick_ram_for_mobo(
+            mobo_choice[1], rams) if mobo_choice else rams[0]
+
+        # pick GPU: the best GPU <= budget_gpu
+        gpu_choice = None
+        if gpus:
+            for k, info, p in reversed(gpus):
+                if p <= budget_gpu:
+                    gpu_choice = (k, info, p)
+                    break
+            if not gpu_choice:
+                # if budget too small, consider integrated (if cpu has igpu)
+                if cpu_choice[1].get("igpu"):
+                    gpu_choice = ("integrated graphics", {
+                                  "name": "Integrated Graphics (from CPU)", "type": "GPU", "price": "₱0"}, 0)
+                else:
+                    gpu_choice = gpus[0]  # fallback cheapest discrete GPU
+
+        # pick storage: cheapest NVMe or SATA within allocation
+        storage_choice = None
+        for k, info, p in reversed(storages):
+            if p <= budget_storage:
+                storage_choice = (k, info, p)
+                break
+        if not storage_choice and storages:
+            storage_choice = storages[0]
+
+        # pick PSU: smallest PSU >= estimated requirement if available, else cheapest adequate
+        recommended_watt, suggested_psu_size = estimate_psu_requirement(
+            cpu_choice[1], gpu_choice[1])
+        # find a PSU >= suggested_psu_size and within budget_psu*3 (allow flexibility)
+        psu_choice = None
+        for k, info, p in psus:
+            watt = parse_watts(info.get("wattage"))
+            if watt and watt >= suggested_psu_size and p <= max(budget_psu * 3, budget * 0.15):
+                psu_choice = (k, info, p)
+                break
+        if not psu_choice and psus:
+            # fallback to most powerful available within entire budget or cheapest
+            for k, info, p in reversed(psus):
+                watt = parse_watts(info.get("wattage"))
+                if watt and p <= budget:
+                    psu_choice = (k, info, p)
+                    break
+            if not psu_choice:
+                psu_choice = psus[0]
+
+        # pick cooler if CPU TDP high or budget allows
+        cooler_choice = None
+        cpu_tdp = parse_watts(cpu_choice[1].get("tdp"))
+        if coolers:
+            if cpu_tdp and cpu_tdp > 95:
+                # prefer 240/360 liquid if available and within budget_cooler*3
+                for k, info, p in coolers:
+                    size = info.get("size", "")
+                    if "240" in str(size) or "360" in str(size):
+                        cooler_choice = (k, info, p)
+                        break
+            if not cooler_choice:
+                # pick cheapest cooler
+                cooler_choice = coolers[0]
+
+        # compute totals and verify total <= budget (allow small margin)
+        choices = [cpu_choice, gpu_choice, mobo_choice,
+                   ram_choice, storage_choice, psu_choice, cooler_choice]
+        # ensure none are None
+        if any(c is None for c in choices):
+            continue
+
+        total_price = sum(int(c[2]) for c in choices if c and c[2] is not None)
+        # allow up to 5% over budget to get better fit
+        if total_price <= budget * 1.05:
+            # assemble result dict
+            build = {
+                "cpu": cpu_choice,
+                "gpu": gpu_choice,
+                "motherboard": mobo_choice,
+                "ram": ram_choice,
+                "storage": storage_choice,
+                "psu": psu_choice,
+                "cooler": cooler_choice,
+                "total": total_price,
+                "recommended_psu_watt": recommended_watt,
+                "suggested_psu_size": suggested_psu_size,
+            }
+            return build
+
+    # if no profile produced a valid build, return None
+    return None
+
+
+def format_build_output(build, budget=None):
+    """Return a short readable string describing the assembled build, with only overall price."""
+    if not build:
+        return "I couldn't find a compatible build within that budget using the local data."
+
+    def mk(name_tup):
+        k, info, p = name_tup
+        price_str = format_php(p) if p is not None else "N/A"
+        return f"{info.get('name', k)} ({price_str})"
+
+    total = build.get("total", 0)
+    suggested_psu = build.get("suggested_psu_size")
+
+    lines = []
+    lines.append("\n🤖 ARIA — PC Build Recommendation:\n")
+    if budget:
+        lines.append(f"Budget target: {format_php(budget)}\n")
+    lines.append(f"Overall price: {format_php(total)}")
+    lines.append("\n" + "-" * 60)
+    lines.append(f"CPU: {mk(build['cpu'])}")
+    lines.append(f"Motherboard: {mk(build['motherboard'])}")
+    lines.append(f"GPU: {mk(build['gpu'])}")
+    lines.append(f"RAM: {mk(build['ram'])}")
+    lines.append(f"Storage: {mk(build['storage'])}")
+    lines.append(
+        f"PSU: {mk(build['psu'])}  • Recommended PSU size: {suggested_psu}W")
+    if build.get("cooler"):
+        lines.append(f"CPU Cooler: {mk(build['cooler'])}")
+    lines.append("-" * 60)
+    lines.append("Short rationale:")
+    lines.append(
+        "• Components chosen from local DB to maximize performance while matching sockets and RAM type.")
+    lines.append("• PSU suggested based on CPU/GPU TDPs + headroom.")
+    return "\n".join(lines) + "\n\n"
+
+
+def handle_build_request(user_query):
+    """
+    Entry point for build planning:
+    - If user gives explicit budget, use it.
+    - If user asks 'budget build' or 'entry-level', map to tier ranges and propose a budget midpoint.
+    """
+    low = user_query.lower()
+    budget = parse_budget_from_text(user_query)
+
+    # if user mentions tier words, map to tier midpoint
+    if budget is None:
+        if any(w in low for w in ["budget build", "budget", "₱15k", "15k", "15,000"]):
+            low_tier = BUILD_TIERS["budget"]
+            budget = (low_tier[0] + low_tier[1]) // 2
+        elif any(w in low for w in ["entry-level", "entry level", "entry", "25k", "30k", "35k"]):
+            low_tier = BUILD_TIERS["entry"]
+            budget = (low_tier[0] + low_tier[1]) // 2
+        elif any(w in low for w in ["mid", "mid-range", "mid range", "40k", "50k", "60k"]):
+            low_tier = BUILD_TIERS["mid"]
+            budget = (low_tier[0] + low_tier[1]) // 2
+        elif any(w in low for w in ["high", "high-end", "70k", "80k", "100k"]):
+            low_tier = BUILD_TIERS["high"]
+            budget = max(70000, low_tier[0])
+
+        if budget is None:
+            msg = "Please specify a budget (e.g., '₱25k' or 'Recommend a build for ₱40,000')."
+            print("\n🤖 ARIA — Build Planner:\n" + msg + "\n\n" + "-"*60 + "\n")
+            return
+
+    # assemble build
+    build = assemble_build_for_budget(budget)
+    output = format_build_output(build, budget)
+    print(output)
+
+
+# -------------------------------
+# 🔍 find_component (robust, explained)
+# -------------------------------
+
+def find_component(query):
+    """
+    Match the user query against components using token overlap + difflib fuzzy matching.
+    Debug-print tokens and best matches to help diagnose matching problems.
+    Returns list of (category, info, key).
+    """
+    if not query:
+        return []
+
+    q = query.lower().strip()
+    # ensure tokens defined before any debug prints
+    q_tokens = normalize_text(q)
+
+    # DEBUG: show tokens produced from user query
+    # print(f"[DEBUG] find_component tokens: {q_tokens}")
+
+    # small noise filter (keeps important tokens like '5600x', 'i7', 'rtx')
+    noise = {"tell", "me", "about", "the", "details", "specs", "information", "show",
+             "is", "are", "with", "for", "what", "which", "of", "in", "how", "many",
+             "give", "can", "you", "please", "a", "an"}
+
+    query_tokens_filtered = [t for t in q_tokens if t not in noise]
+    if not query_tokens_filtered:
+        # still return empty and debug
+       # print(f"[DEBUG] find_component: no significant tokens after filtering.")
+        return []
+
+    candidates = []
+    for category, items in data.items():
+        for key, info in items.items():
+            key_normalized = key.lower()
+            name_normalized = (info.get("name") or "").lower()
+
+            # token overlap score (simple)
+            key_tokens = normalize_text(key_normalized)
+            name_tokens = normalize_text(name_normalized)
+            combined = set(key_tokens + name_tokens)
+            overlap = sum(1 for t in query_tokens_filtered if t in combined)
+            token_score = overlap / max(1, len(set(query_tokens_filtered)))
+
+            # fuzzy ratio fallback
+            key_ratio = difflib.SequenceMatcher(
+                None, q, key_normalized).ratio()
+            name_ratio = difflib.SequenceMatcher(
+                None, q, name_normalized).ratio()
+            fuzzy_score = max(key_ratio, name_ratio)
+
+            # composite score (weights can be tuned)
+            score = (token_score * 0.7) + (fuzzy_score * 0.3)
+
+            if score > 0.18:
+                candidates.append((score, category, info, key))
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    matches = [(cat, inf, k) for _, cat, inf, k in candidates]
+
+    # DEBUG: show the keys matched (in order)
+    # show up to first 6
+    # print(f"[DEBUG] find_component matches: {[m[2] for m in matches[:6]]}")
+
+    return matches
+
+# -------------------------------
+# 🔎 Local single-field response
+# -------------------------------
+
+
+def respond_from_local(component_key, info, user_query):
+    """
+    Return single-field answers from local JSON when user requests a specific attribute.
+    Prints the answer and returns True if handled, else returns False.
+
+    Important behavior:
+    - If the user asks for "details", "specs", "information", etc. we return False
+      so the caller can show full specs (ask_gemini or local fallback).
+    """
+    if not user_query or not info:
+        return False
+
+    q = user_query.lower()
+    comp_name_lc = (info.get("name") or component_key).lower()
+
+    # If user explicitly asks for details/specs/full info, treat as NOT a single-field request.
+    detail_triggers = [
+        r'\bdetails?\b', r'\bspecs?\b', r'\binformation\b', r'\btell me about\b',
+        r'\bshow me\b', r'\bwhat are\b.*\bdetails?\b', r'\bwhat are\b.*\bspecs?\b'
+    ]
+    if any(re.search(pat, q) for pat in detail_triggers):
+        # Let the higher-level flow handle full details (ask_gemini or local fallback)
+        return False
+
+    # helper: word-boundary search so 'price' doesn't match 'surprise'
+    def contains_word(text, word):
+        return re.search(rf"\b{re.escape(word)}\b", text, flags=re.I) is not None
+
+    # canonical field -> list of possible keys / query keywords
+    field_aliases = {
+        "socket": ["socket", "socket type"],
+        "price": ["price", "cost", "how much", "how much is", "₱", "php", "peso"],
+        "tdp": ["tdp", "tdp:", "thermal design power", "thermal"],
+        "power": ["power", "wattage", "power draw", "power consumption"],
+        "clock": ["clock", "boost", "boost clock", "clock speed", "ghz"],
+        "cores": ["core", "cores", "threads"],
+        "igpu": ["igpu", "integrated graphics", "integrated gpu"],
+        "compatibility": ["compatibility", "compatible"],
+        "ram": ["ram", "ram_type", "memory speed"],
+        "capacity": ["capacity", "storage", "gb", "tb"],
+        "slot": ["slot", "pcie", "pci-e"],
+        "interface": ["interface", "sata", "nvme", "m.2"],
+        "vram": ["vram", "video memory", "gpu memory"],
+        "wattage": ["wattage", "watt"],
+        "speed": ["speed", "mhz"],
+    }
+
+    pretty_label = {
+        "socket": "Socket",
+        "price": "Price",
+        "tdp": "TDP",
+        "power": "Power / Wattage",
+        "clock": "Clock",
+        "cores": "Cores / Threads",
+        "igpu": "Integrated Graphics",
+        "compatibility": "Compatibility",
+        "ram": "RAM",
+        "capacity": "Capacity",
+        "slot": "Slot",
+        "interface": "Interface",
+        "vram": "VRAM",
+        "wattage": "Wattage",
+        "speed": "Speed"
+    }
+
+    # 1) Detect requested field from query with safer heuristics
+    requested_field = None
+
+    # Context indicators that raise confidence (user really asking about the field)
+    context_indicators = [
+        r"how many", r"how much", r"\bwhat is\b", r"\bwhat's\b", r"\bwhat are\b",
+        r"\?", r":", r"\bvalue\b", r"\bsize\b", r"\bcount\b", r"\bnumber of\b"
+    ]
+    context_re = re.compile("|".join(context_indicators), flags=re.I)
+
+    for field, keywords in field_aliases.items():
+        for kw in keywords:
+            if contains_word(q, kw):
+                # If the keyword appears inside the component name (e.g., "Core i7"),
+                # don't treat it as a field request unless there is extra context indicating a question.
+                if kw in comp_name_lc and not context_re.search(q):
+                    # skip this match because it's likely part of the model name
+                    continue
+                requested_field = field
+                break
+        if requested_field:
+            break
+
+    # Extra heuristic: if user includes currency symbol or words, assume price
+    if not requested_field and ("₱" in q or "php" in q or "peso" in q or "how much" in q):
+        requested_field = "price"
+
+    component_name = info.get("name", component_key)
+
+    if not requested_field:
+        return False  # not a single-field local intent
+
+    # 2) Try direct aliases (preferred order)
+    for field_key in field_aliases.get(requested_field, []):
+        # look for exact DB key matches first
+        if field_key in info and info[field_key] not in (None, ""):
+            val = info[field_key]
+            label = pretty_label.get(requested_field, field_key.capitalize())
+            output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {val}\n\n" + \
+                "-" * 60 + "\n"
+            print(output)
+            try:
+                add_to_history(
+                    "assistant", f"{component_name} • {label}: {val}")
+            except Exception:
+                pass
+            return True
+
+    # 3) Try common DB keys (if alias keys differ)
+    for alt in [requested_field, requested_field + "_type", requested_field + "_size"]:
+        if alt in info and info[alt] not in (None, ""):
+            val = info[alt]
+            label = pretty_label.get(requested_field, alt.capitalize())
+            output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {val}\n\n" + \
+                "-" * 60 + "\n"
+            print(output)
+            try:
+                add_to_history(
+                    "assistant", f"{component_name} • {label}: {val}")
+            except Exception:
+                pass
+            return True
+
+    # 4) Fallback: look for matching keys by substring
+    for k, v in info.items():
+        if requested_field in k and v not in (None, ""):
+            label = pretty_label.get(requested_field, k.capitalize())
+            output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {v}\n\n" + \
+                "-" * 60 + "\n"
+            print(output)
+            try:
+                add_to_history("assistant", f"{component_name} • {label}: {v}")
+            except Exception:
+                pass
+            return True
+
+    # 5) Value-scan fallback for TDP/power/wattage
+    if requested_field in ("tdp", "power", "wattage"):
+        wpat = re.compile(r'(\d{2,4})\s*[Ww]\b')
+        for k, v in info.items():
+            if isinstance(v, str):
+                m = wpat.search(v)
+                if m:
+                    val = m.group(0)
+                    label = pretty_label.get(requested_field, "Wattage")
+                    output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {val}\n\n" + \
+                        "-" * 60 + "\n"
+                    print(output)
+                    try:
+                        add_to_history(
+                            "assistant", f"{component_name} • {label}: {val}")
+                    except Exception:
+                        pass
+                    return True
+        label = pretty_label.get(requested_field, requested_field.capitalize())
+        output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: This information is missing in the local database.\n\n" + "-" * 60 + "\n"
+        print(output)
+        try:
+            add_to_history("assistant", f"{component_name} • {label}: Missing")
+        except Exception:
+            pass
+        return True
+
+    # 6) Numeric hints for vram/capacity/price/speed
+    if requested_field in ("vram", "capacity", "price", "speed"):
+        for k, v in info.items():
+            if isinstance(v, str):
+                if requested_field == "price":
+                    pv = parse_price(v)
+                    if pv:
+                        output = f"\n🤖 ARIA says:\n\n{component_name}\n• Price: {format_php(pv)}\n\n" + \
+                            "-" * 60 + "\n"
+                        print(output)
+                        try:
+                            add_to_history(
+                                "assistant", f"{component_name} • Price: {format_php(pv)}")
+                        except Exception:
+                            pass
+                        return True
+                if requested_field in ("vram", "capacity") and re.search(r'\b\d+\s*(GB|TB)\b', v, flags=re.I):
+                    found = re.search(r'\b\d+\s*(GB|TB)\b',
+                                      v, flags=re.I).group(0)
+                    label = pretty_label.get(
+                        requested_field, requested_field.capitalize())
+                    output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {found}\n\n" + "-" * 60 + "\n"
+                    print(output)
+                    try:
+                        add_to_history(
+                            "assistant", f"{component_name} • {label}: {found}")
+                    except Exception:
+                        pass
+                    return True
+                if requested_field == "speed" and re.search(r'\b\d+\s*(MHz|GHz)\b', v, flags=re.I):
+                    found = re.search(r'\b\d+\s*(MHz|GHz)\b',
+                                      v, flags=re.I).group(0)
+                    label = pretty_label.get(requested_field, "Speed")
+                    output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {found}\n\n" + "-" * 60 + "\n"
+                    print(output)
+                    try:
+                        add_to_history(
+                            "assistant", f"{component_name} • {label}: {found}")
+                    except Exception:
+                        pass
+                    return True
+
+    # 7) Nothing matched
+    label = pretty_label.get(requested_field, requested_field.capitalize())
+    output = (f"\n🤖 ARIA says:\n\n{component_name}\n"
+              f"• {label}: This information is missing in the local database.\n\n"
+              + "-" * 60 + "\n")
+    print(output)
+    try:
+        add_to_history("assistant", f"{component_name} • {label}: Missing")
+    except Exception:
+        pass
+    return True
+
+
+def respond_from_local(component_key, info, user_query):
+    """
+    Return single-field answers from local JSON when user requests a specific attribute.
+    Prints the answer and returns True if handled, else returns False.
+
+    Important behavior:
+    - If the user asks for "details", "specs", "information", etc. we return False
+      so the caller can show full specs (ask_gemini or local fallback).
+    """
+    if not user_query or not info:
+        return False
+
+    q = user_query.lower()
+    comp_name_lc = (info.get("name") or component_key).lower()
+
+    # If user explicitly asks for details/specs/full info, treat as NOT a single-field request.
+    detail_triggers = [
+        r'\bdetails?\b', r'\bspecs?\b', r'\binformation\b', r'\btell me about\b',
+        r'\bshow me\b', r'\bwhat are\b.*\bdetails?\b', r'\bwhat are\b.*\bspecs?\b'
+    ]
+    if any(re.search(pat, q) for pat in detail_triggers):
+        # Let the higher-level flow handle full details (ask_gemini or local fallback)
+        return False
+
+    # helper: word-boundary search so 'price' doesn't match 'surprise'
+    def contains_word(text, word):
+        return re.search(rf"\b{re.escape(word)}\b", text, flags=re.I) is not None
+
+    # canonical field -> list of possible keys / query keywords
+    field_aliases = {
+        "socket": ["socket", "socket type"],
+        "price": ["price", "cost", "how much", "how much is", "₱", "php", "peso"],
+        "tdp": ["tdp", "tdp:", "thermal design power", "thermal"],
+        "power": ["power", "wattage", "power draw", "power consumption"],
+        "clock": ["clock", "boost", "boost clock", "clock speed", "ghz"],
+        "cores": ["core", "cores", "threads"],
+        "igpu": ["igpu", "integrated graphics", "integrated gpu"],
+        "compatibility": ["compatibility", "compatible"],
+        "ram": ["ram", "ram_type", "memory speed"],
+        "capacity": ["capacity", "storage", "gb", "tb"],
+        "slot": ["slot", "pcie", "pci-e"],
+        "interface": ["interface", "sata", "nvme", "m.2"],
+        "vram": ["vram", "video memory", "gpu memory"],
+        "wattage": ["wattage", "watt"],
+        "speed": ["speed", "mhz"],
+    }
+
+    pretty_label = {
+        "socket": "Socket",
+        "price": "Price",
+        "tdp": "TDP",
+        "power": "Power / Wattage",
+        "clock": "Clock",
+        "cores": "Cores / Threads",
+        "igpu": "Integrated Graphics",
+        "compatibility": "Compatibility",
+        "ram": "RAM",
+        "capacity": "Capacity",
+        "slot": "Slot",
+        "interface": "Interface",
+        "vram": "VRAM",
+        "wattage": "Wattage",
+        "speed": "Speed"
+    }
+
+    # 1) Detect requested field from query with safer heuristics
+    requested_field = None
+
+    # Context indicators that raise confidence (user really asking about the field)
+    context_indicators = [
+        r"how many", r"how much", r"\bwhat is\b", r"\bwhat's\b", r"\bwhat are\b",
+        r"\?", r":", r"\bvalue\b", r"\bsize\b", r"\bcount\b", r"\bnumber of\b"
+    ]
+    context_re = re.compile("|".join(context_indicators), flags=re.I)
+
+    for field, keywords in field_aliases.items():
+        for kw in keywords:
+            if contains_word(q, kw):
+                # If the keyword appears inside the component name (e.g., "Core i7"),
+                # don't treat it as a field request unless there is extra context indicating a question.
+                if kw in comp_name_lc and not context_re.search(q):
+                    # skip this match because it's likely part of the model name
+                    continue
+                requested_field = field
+                break
+        if requested_field:
+            break
+
+    # Extra heuristic: if user includes currency symbol or words, assume price
+    if not requested_field and ("₱" in q or "php" in q or "peso" in q or "how much" in q):
+        requested_field = "price"
+
+    component_name = info.get("name", component_key)
+
+    if not requested_field:
+        return False  # not a single-field local intent
+
+    # 2) Try direct aliases (preferred order)
+    for field_key in field_aliases.get(requested_field, []):
+        # look for exact DB key matches first
+        if field_key in info and info[field_key] not in (None, ""):
+            val = info[field_key]
+            label = pretty_label.get(requested_field, field_key.capitalize())
+            output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {val}\n\n" + \
+                "-" * 60 + "\n"
+            print(output)
+            try:
+                add_to_history(
+                    "assistant", f"{component_name} • {label}: {val}")
+            except Exception:
+                pass
+            return True
+
+    # 3) Try common DB keys (if alias keys differ)
+    for alt in [requested_field, requested_field + "_type", requested_field + "_size"]:
+        if alt in info and info[alt] not in (None, ""):
+            val = info[alt]
+            label = pretty_label.get(requested_field, alt.capitalize())
+            output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {val}\n\n" + \
+                "-" * 60 + "\n"
+            print(output)
+            try:
+                add_to_history(
+                    "assistant", f"{component_name} • {label}: {val}")
+            except Exception:
+                pass
+            return True
+
+    # 4) Fallback: look for matching keys by substring
+    for k, v in info.items():
+        if requested_field in k and v not in (None, ""):
+            label = pretty_label.get(requested_field, k.capitalize())
+            output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {v}\n\n" + \
+                "-" * 60 + "\n"
+            print(output)
+            try:
+                add_to_history("assistant", f"{component_name} • {label}: {v}")
+            except Exception:
+                pass
+            return True
+
+    # 5) Value-scan fallback for TDP/power/wattage
+    if requested_field in ("tdp", "power", "wattage"):
+        wpat = re.compile(r'(\d{2,4})\s*[Ww]\b')
+        for k, v in info.items():
+            if isinstance(v, str):
+                m = wpat.search(v)
+                if m:
+                    val = m.group(0)
+                    label = pretty_label.get(requested_field, "Wattage")
+                    output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {val}\n\n" + \
+                        "-" * 60 + "\n"
+                    print(output)
+                    try:
+                        add_to_history(
+                            "assistant", f"{component_name} • {label}: {val}")
+                    except Exception:
+                        pass
+                    return True
+        label = pretty_label.get(requested_field, requested_field.capitalize())
+        output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: This information is missing in the local database.\n\n" + "-" * 60 + "\n"
+        print(output)
+        try:
+            add_to_history("assistant", f"{component_name} • {label}: Missing")
+        except Exception:
+            pass
+        return True
+
+    # 6) Numeric hints for vram/capacity/price/speed
+    if requested_field in ("vram", "capacity", "price", "speed"):
+        for k, v in info.items():
+            if isinstance(v, str):
+                if requested_field == "price":
+                    pv = parse_price(v)
+                    if pv:
+                        output = f"\n🤖 ARIA says:\n\n{component_name}\n• Price: {format_php(pv)}\n\n" + \
+                            "-" * 60 + "\n"
+                        print(output)
+                        try:
+                            add_to_history(
+                                "assistant", f"{component_name} • Price: {format_php(pv)}")
+                        except Exception:
+                            pass
+                        return True
+                if requested_field in ("vram", "capacity") and re.search(r'\b\d+\s*(GB|TB)\b', v, flags=re.I):
+                    found = re.search(r'\b\d+\s*(GB|TB)\b',
+                                      v, flags=re.I).group(0)
+                    label = pretty_label.get(
+                        requested_field, requested_field.capitalize())
+                    output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {found}\n\n" + "-" * 60 + "\n"
+                    print(output)
+                    try:
+                        add_to_history(
+                            "assistant", f"{component_name} • {label}: {found}")
+                    except Exception:
+                        pass
+                    return True
+                if requested_field == "speed" and re.search(r'\b\d+\s*(MHz|GHz)\b', v, flags=re.I):
+                    found = re.search(r'\b\d+\s*(MHz|GHz)\b',
+                                      v, flags=re.I).group(0)
+                    label = pretty_label.get(requested_field, "Speed")
+                    output = f"\n🤖 ARIA says:\n\n{component_name}\n• {label}: {found}\n\n" + "-" * 60 + "\n"
+                    print(output)
+                    try:
+                        add_to_history(
+                            "assistant", f"{component_name} • {label}: {found}")
+                    except Exception:
+                        pass
+                    return True
+
+    # 7) Nothing matched
+    label = pretty_label.get(requested_field, requested_field.capitalize())
+    output = (f"\n🤖 ARIA says:\n\n{component_name}\n"
+              f"• {label}: This information is missing in the local database.\n\n"
+              + "-" * 60 + "\n")
+    print(output)
+    try:
+        add_to_history("assistant", f"{component_name} • {label}: Missing")
+    except Exception:
+        pass
+    return True
+
+
+# Compatibility / Comparison Tools
+
+def extract_components_from_text(query):
+    q_tokens = normalize_text(query)
+    matches = []
+    print(f"Extracting components from query: {query}")  # Debugging line
+    for category, items in data.items():
+        for key, info in items.items():
+            key_tokens = normalize_text(key)
+            name_tokens = normalize_text(info.get("name", ""))
+            combined = set(key_tokens + name_tokens)
+            if not combined:
+                continue
+            overlap = sum(1 for t in q_tokens if t in combined)
+            if overlap > 0:
+                score = overlap / max(1, len(set(q_tokens)))
+                matches.append((score, category, info, key))
+
+    matches.sort(key=lambda x: x[0], reverse=True)
+    return [(c, it, k) for _, c, it, k in matches]
+
+
+def compare_components(user_query):
+    """
+    Improved compare: chooses relevant fields by category, uses aliases,
+    and prints N/A for missing values instead of aborting.
+    """
+    found = extract_components_from_text(user_query)
+    comps = []
+    for cat, info, key in found:
+        comps.append((cat, info, key))
+
+    if len(comps) < 2:
+        print("\n🤖 ARIA says:\n\nPlease mention two components to compare (e.g. 'compare rtx 3060 and rtx 4060').\n")
+        return
+
+    a_cat, a_info, a_key = comps[0]
+    b_cat, b_info, b_key = comps[1]
+
+    # If you still want to forbid cross-category compare, keep this:
+    if a_cat != b_cat:
+        print("\n🤖 ARIA says:\n\nYou cannot compare a CPU with a GPU. Please specify two CPUs or two GPUs to compare.\n")
+        return
+
+    # Relevant fields and aliases per category
+    category_fields = {
+        "cpu": [
+            ("socket", ["socket"]),
+            ("cores/threads", ["cores", "threads"]),
+            ("clock", ["clock", "boost", "boost clock", "clock speed"]),
+            ("tdp", ["tdp", "power", "wattage"]),
+            ("igpu", ["igpu", "integrated graphics"]),
+            ("price", ["price", "cost"]),
+            ("compatibility", ["compatibility"])
+        ],
+        "gpu": [
+            ("vram", ["vram", "memory"]),
+            ("clock", ["clock", "boost", "boost clock"]),
+            ("power", ["power", "tdp", "wattage"]),
+            ("slot", ["slot"]),
+            ("price", ["price", "cost"]),
+            ("compatibility", ["compatibility"])
+        ],
+        "ram": [
+            ("capacity", ["capacity"]),
+            ("speed", ["speed"]),
+            ("type", ["ram_type", "ram type", "ram"]),
+            ("price", ["price", "cost"]),
+            ("compatibility", ["compatibility"])
+        ],
+        "motherboard": [
+            ("socket", ["socket"]),
+            ("form_factor", ["form_factor", "form factor"]),
+            ("ram_slots", ["ram_slots"]),
+            ("ram_type", ["ram_type", "ram type"]),
+            ("nvme_slots", ["nvme_slots"]),
+            ("price", ["price", "cost"]),
+            ("compatibility", ["compatibility"])
+        ],
+        "storage": [
+            ("capacity", ["capacity"]),
+            ("interface", ["interface"]),
+            ("price", ["price", "cost"]),
+            ("compatibility", ["compatibility"])
+        ],
+        "psu": [
+            ("wattage", ["wattage", "wattage"]),
+            ("efficiency", ["efficiency"]),
+            ("price", ["price", "cost"]),
+            ("compatibility", ["compatibility"])
+        ],
+        "cpu_cooler": [
+            ("cooler_type", ["cooler_type", "cooler type"]),
+            ("size", ["size"]),
+            ("socket", ["socket"]),
+            ("price", ["price", "cost"]),
+            ("compatibility", ["compatibility"])
+        ]
+    }
+
+    # default fallback fields if category unknown
+    default_fields = [
+        ("type", ["type"]), ("price", ["price", "cost"]
+                             ), ("compatibility", ["compatibility"])
+    ]
+
+    fields_spec = category_fields.get(a_cat, default_fields)
+
+    # helper to get first present alias value or None
+    def get_alias_value(info_dict, aliases):
+        for a in aliases:
+            if a in info_dict and info_dict[a] not in (None, ""):
+                return info_dict[a]
+        return None
+
+    # build header & print
+    print("\n🤖 ARIA — Component Comparison:\n")
+    print(f"{a_info.get('name')}  VS  {b_info.get('name')}")
+    print("-" * 60)
+
+    # print each chosen field
+    for pretty_name, aliases in fields_spec:
+        a_val = get_alias_value(a_info, aliases) or "N/A"
+        b_val = get_alias_value(b_info, aliases) or "N/A"
+
+        # For price, try to normalize numbers for nicer alignment
+        if pretty_name in ("price",):
+            a_num = parse_price(a_val) if isinstance(a_val, str) else None
+            b_num = parse_price(b_val) if isinstance(b_val, str) else None
+            if isinstance(a_num, int):
+                a_val = format_php(a_num)
+            if isinstance(b_num, int):
+                b_val = format_php(b_num)
+
+        # For cores/threads try to preserve the string; otherwise show N/A
+        print(f"{pretty_name.capitalize():18} | {str(a_val):35} | {str(b_val)}")
+
+    print("\n" + "-" * 60 + "\n")
+
+
+def add_to_history(role, text, meta=None):
+    """Append a new turn to the history and trim to max turns."""
+    history.append({"role": role, "text": text, "meta": meta or {}})
+    # keep only last N turns
+    if len(history) > HISTORY_MAX_TURNS:
+        del history[0: len(history) - HISTORY_MAX_TURNS]
+
+
+def get_context_snippet(max_chars=1500):
+    """Return a short context snippet composed from recent history (safe length)."""
+    if not history:
+        return ""
+    # Compose recent turns (user + assistant) until reaching char limit
+    out = []
+    total = 0
+    for turn in history[-HISTORY_MAX_TURNS:]:
+        t = f"{turn['role'].upper()}: {turn['text']}\n"
+        if total + len(t) > max_chars:
+            break
+        out.append(t)
+        total += len(t)
+    return "\n".join(out)
+
+
+# Local / Fallback Template Helpers
+
+def local_reply_template(kind, **kwargs):
+    t = random.choice(LOCAL_TEMPLATES.get(kind, ["{text}"]))
+    return t.format(**kwargs)
+
+
+# -----------------------------------
+# 💡 Build-request trigger phrases
+# -----------------------------------
+BUILD_KEYWORDS = [
+    "recommend a build", "recommend build", "suggest a build", "suggest build",
+    "pc build", "budget build", "build for", "entry-level build", "gaming build"
+]
+# Intent & Follow-up Detection
+
+
+def is_build_request(user_text):
+    t = (user_text or "").lower()
+    # If user explicitly types a numeric budget, that's a build request too
+    if parse_budget_from_text(t):
+        return True
+    # check for any build keyword phrase
+    for kw in BUILD_KEYWORDS:
+        if kw in t:
+            return True
+    return False
+
+
+# Follow-up triggers used by needs_followup()
+FOLLOWUP_TRIGGERS = [
+    "compatible",
+    "compatibility",
+    "is it compatible",
+    "is compatible",
+    "compatible with",
+    "fit with",
+    "fit",
+    "works with",
+    "will it work"
+]
+
+
+def needs_followup(user_text):
+    """Return a followup question text if request is ambiguous, else None."""
+    q = (user_text or "").lower()
+    # If user asks about compatibility but only mentions one item, ask which other part to compare
+    if any(w in q for w in FOLLOWUP_TRIGGERS):
+        # crude check: count how many component-like tokens present (model numbers, known keys)
+        found_count = 0
+        for cat, items in data.items():
+            for key, info in items.items():
+                keytok = key.lower()
+                if keytok in q or (info.get("name") or "").lower() in q:
+                    found_count += 1
+        if found_count < 2:
+            # ask which other component they mean
+            return "Which other component do you want to check compatibility with? (e.g., a motherboard or GPU name)"
+    # For build requests without budget, ask budget
+    if is_build_request(q) and not parse_budget_from_text(q):
+        # only ask if they didn't already mention a tier
+        if not any(t in q for t in ["budget", "entry", "mid", "high", "₱", "php", "k"]):
+            return "What's your budget or which tier do you want? (e.g., ₱25k, entry-level, mid-range)"
+    return None
+
+
+# Gemini API Wrapper
+# -------------------------------
+# 💬 Ask Gemini
+# -------------------------------
+
+
+def ask_gemini(user_query, found_data):
+    """
+    Send user question to Gemini and intelligently limit the response to relevant specs.
+
+    - If the user asks for specific fields (socket, price, tdp, etc.) only those values are requested.
+    - Otherwise ask for full structured specs.
+    - Retries up to 3 times on transient failures.
+    - Sanitizes, deduplicates, and formats Gemini's reply into simple bullets.
+    - Prints the final formatted text and returns it (or None on failure).
+    """
+    # guard: ensure client exists
+    try:
+        _ = client
+    except NameError:
+        raise RuntimeError(
+            "Gemini client not found. Make sure `client = genai.Client(...)` is defined.")
+
+    context = json.dumps(found_data or {}, indent=2, ensure_ascii=False)
+
+    # keywords that indicate the user only wants a specific detail
+    keywords = [
+        "socket", "price", "tdp", "power", "clock", "speed", "cores",
+        "threads", "igpu", "graphics", "compatibility", "ram type",
+        "form factor", "wattage", "efficiency", "capacity", "interface", "vram"
+    ]
+    matched_keywords = [
+        kw for kw in keywords if kw in (user_query or "").lower()]
+
+    if matched_keywords:
+        focus = ", ".join(matched_keywords)
+        query_mode = f"""The user only wants information about: {focus}.
+Check the provided JSON and extract the exact value(s) for those attributes.
+If a key exists, return only its value(s).
+If a key doesn't exist, respond exactly: "This information is missing in the local database."""
+
+    else:
+        query_mode = "The user wants full details about the component. Provide full structured specs."
+
+    # Build prompt
+    system_header = (
+        "You are ARIA, a helpful PC component assistant. ONLY use the JSON data provided below. "
+        "Do not invent or guess values. If a requested key is missing, respond exactly: "
+        "\"This information is missing in the local database.\""
+    )
+
+    prompt = f"""{system_header}
+
+Available Data:
+{context}
+
+User Question: {user_query}
+
+Instructions:
+{query_mode}
+
+Rules:
+- Respond ONCE only.
+- Do NOT repeat sentences or duplicate lines.
+- Do NOT use Markdown syntax (no #, **, ``` etc.).
+- Use short, simple bullet formatting (use '•' or '-' for bullets).
+- If returning full details, use this structure:
+
+Component Name
+Key Specs:
+• Spec: Value
+Price:
+• ₱value
+Compatibility:
+• description
+Summary:
+• short friendly explanation
+
+If returning specific detail(s), return:
+
+Component Name
+• Requested Detail: Value
+
+End response.
+"""
+
+    max_attempts = 3
+    backoff = 2
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+
+            # Try to access text attribute robustly
+            text = None
+            if hasattr(response, "text") and response.text:
+                text = response.text
+            elif hasattr(response, "output") and getattr(response, "output"):
+                # some SDKs may store content in .output; try to extract
+                out = getattr(response, "output")
+                # naive extraction for safety:
+                if isinstance(out, str):
+                    text = out
+                elif isinstance(out, (list, tuple)) and len(out) > 0:
+                    # join textual pieces
+                    text = " ".join(map(str, out))
+                else:
+                    text = str(out)
+
+            if not text:
+                raise ValueError("Empty response from Gemini")
+
+            # Basic sanitization
+            text = text.strip()
+
+            # Remove excessive markdown characters or triple repeats
+            text = re.sub(r'[`*_]{1,}', '', text)               # remove ` * _
+            # collapse multiple blank lines
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            # collapse multi-space
+            text = re.sub(r'[ \t]{2,}', ' ', text)
+
+            # Split to lines and normalize bullets
+            raw_lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+            # Convert lines like "Key: Value" into "• Key: Value" and keep existing bullets
+            normalized = []
+            for ln in raw_lines:
+                # standardize existing bullets
+                if re.match(r'^[\-\u2022]\s+', ln):
+                    content = re.sub(r'^[\-\u2022]\s+', '', ln)
+                    normalized.append(f"• {content}")
+                elif ':' in ln and len(ln.split(':', 1)[0].split()) < 6:
+                    # treat "Label: Value" lines as bullets
+                    parts = ln.split(':', 1)
+                    label = parts[0].strip()
+                    val = parts[1].strip()
+                    normalized.append(f"• {label}: {val}")
+                else:
+                    # keep as-is (likely a header or short sentence)
+                    normalized.append(ln)
+
+            # Deduplicate adjacent repeated lines (common model repetition bug)
+            deduped = []
+            prev = None
+            for ln in normalized:
+                if ln == prev:
+                    continue
+                deduped.append(ln)
+                prev = ln
+
+            # Further de-duplicate by collapsing repeated blocks (if the entire block repeats)
+            # simple approach: join and remove consecutive duplicate paragraphs
+            final_lines = []
+            seen_blocks = set()
+            # group by blank-line separated paragraphs
+            para = []
+            for ln in deduped + [""]:  # sentinel to flush last paragraph
+                if ln == "":
+                    if para:
+                        block = "\n".join(para)
+                        if block not in seen_blocks:
+                            final_lines.extend(para)
+                            final_lines.append("")  # paragraph separator
+                            seen_blocks.add(block)
+                        para = []
+                else:
+                    para.append(ln)
+            # remove trailing blank if present
+            if final_lines and final_lines[-1] == "":
+                final_lines = final_lines[:-1]
+
+            formatted_text = "\n".join(final_lines)
+
+            # Final small cleanup: ensure header lines (like component name) are not prefixed with bullet
+            # If first line starts with '• ' and next lines contain ':', assume bulletized header — convert back
+            # (But keep simple: leave as-is if uncertain)
+
+            # Print and return
+            print("\n🤖 ARIA says:\n")
+            print(formatted_text + "\n")
+            print("-" * 60 + "\n")
+            return formatted_text
+
+        except Exception as e:
+            last_error = e
+            # transient server overload message commonly contains 503 or 'overloaded'
+            err_str = str(e).lower()
+            if "503" in err_str or "overload" in err_str or "busy" in err_str:
+                if attempt < max_attempts:
+                    print(
+                        f"⚠️ Gemini server busy (attempt {attempt}/{max_attempts}). Retrying in {backoff}s...")
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                else:
+                    print(
+                        "❌ Gemini is currently overloaded. Attempting local fallback...\n")
+                    break
+            else:
+                # non-transient error — show and return
+                print(f"⚠️ Error while calling Gemini: {e}\n")
+                return None
+
+    # If we get here, all attempts failed — provide a respectful fallback using found_data
+    try:
+        if found_data:
+            # Pretty-print the provided local data succinctly
+            out_lines = [
+                "⚠️ Gemini unavailable — showing local data instead:", "-" * 40]
+            for cat, info in (found_data.items() if isinstance(found_data, dict) else []):
+                # info may be a dict with a single component or multiple; iterate safely
+                if isinstance(info, dict):
+                    # if this dict looks like a single component (has 'name'), print it
+                    if "name" in info:
+                        name = info.get("name")
+                        price = info.get("price", "N/A")
+                        keys = [k for k in (
+                            "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
+                        specs = " • ".join([f"{k}: {info[k]}" for k in keys])
+                        out_lines.append(f"- {name} — {specs} — {price}")
+                    else:
+                        # iterate inner keys
+                        for subk, subinfo in info.items():
+                            name = subinfo.get("name", subk)
+                            price = subinfo.get("price", "N/A")
+                            keys = [k for k in (
+                                "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in subinfo]
+                            specs = " • ".join(
+                                [f"{k}: {subinfo[k]}" for k in keys])
+                            out_lines.append(f"- {name} — {specs} — {price}")
+            out_lines.append("-" * 40)
+            final = "\n".join(out_lines)
+            print(final + "\n")
+            return final
+        else:
+            print("❌ Gemini is unavailable and no local data to show.\n")
+            return None
+    except Exception as final_exc:
+        print(f"⚠️ Unexpected fallback error: {final_exc}\n")
+        return None
+
+
+# Word Matching Utilities (used across intents)
+def contains_word(haystack, word):
+    """Safe word-boundary check (case-insensitive)."""
+    return re.search(rf"\b{re.escape(word)}\b", haystack, flags=re.I) is not None
+
+
+def contains_any(haystack, words):
+    return any(contains_word(haystack, w) for w in words)
+
+
+# Main Program Loop (Interactive Chat)
 if __name__ == "__main__":
-    main()
+    print("🤖 ARIA YOUR ASSISTANT ")
+    print("Ask about any component (e.g. 'Ryzen 5 5600X', 'RTX 4060', 'MSI PRO X670-P WIFI').")
+    print("Type 'exit' to quit.\n")
+
+    # Trigger lists used throughout the loop (defined once)
+    comp_triggers = ["compatible", "compatibility", "is compatible", "compatible with",
+                     "fit with", "works with", "work with", "will work", "will it work", "will"]
+    psu_triggers_quick = ["psu", "power supply", "power recommendation", "watt",
+                          "wattage", "power draw", "how much watt", "how much wattage"]
+    compare_triggers = [" vs ", " vs. ",
+                        " versus ", " compare ", " compare to "]
+    recommend_triggers = ["recommend a build", "build for", "suggest a build",
+                          "pc build", "budget build", "recommend build", "suggest build"]
+
+    while True:
+        try:
+            user_input = input("You: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n👋 Goodbye!")
+            break
+
+        if not user_input:
+            continue
+
+        low = user_input.lower().strip()
+
+        # exit
+        if low in ["exit", "quit", "bye"]:
+            print("👋 Goodbye!")
+            break
+
+        # store user turn in history if available
+        try:
+            add_to_history("user", user_input)
+        except Exception:
+            pass
+
+        # ----- 1) Try component lookup (local-first) -----
+        matches = find_component(user_input)
+        if matches:
+            print(f"[DEBUG] find_component matches: {[m[2] for m in matches]}")
+            # if the query looks like a compatibility question and we found components,
+            # handle compatibility immediately
+            if contains_any(low, comp_triggers):
+                try:
+                    if re.search(r'\b(work|works|will)\b.*\bwith\b', low) or contains_any(low, comp_triggers):
+                        handled = check_compatibility(user_input)
+                    if handled:
+                        continue
+                except Exception as e:
+                    print(f"⚠️ Compatibility handler error: {e}\n")
+                    # fall through to normal handling
+
+            # pick best match (first)
+            category, info, component_key = matches[0]
+
+            # respond from local DB for single-field intents (price/socket/tdp etc.)
+            try:
+                handled = respond_from_local(component_key, info, user_input)
+            except Exception as e:
+                handled = False
+                print(f"⚠️ Local response error: {e}")
+
+            if handled:
+                continue
+
+            # otherwise try Gemini (or local fallback)
+            try:
+                ask_gemini(user_input, {category: info})
+            except Exception as e:
+                # graceful fallback to local summary
+                print(f"⚠️ Error while querying Gemini: {e}\n")
+                try:
+                    name = info.get("name", component_key)
+                    price = info.get("price", "N/A")
+                    keys = [k for k in (
+                        "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
+                    specs = " • ".join([f"{k}: {info[k]}" for k in keys])
+                    print(
+                        f"\n🤖 ARIA says (local fallback):\n{name}\n{specs}\nPrice: {price}\n\n" + "-" * 60 + "\n")
+                except Exception:
+                    print("⚠️ Unable to show local fallback data.\n")
+            continue
+
+        # ----- 2) Quick PSU/wattage handler (before education/build) -----
+        if contains_any(low, psu_triggers_quick):
+            follow = needs_followup(user_input)
+            if follow:
+                try:
+                    add_to_history("assistant", follow)
+                except Exception:
+                    pass
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                continue
+            try:
+                handle_psu_request(user_input)
+            except Exception as e:
+                print(f"⚠️ PSU handler error: {e}\n")
+            continue
+
+        # ----- 3) Permissive component detection to avoid mis-classifying educational queries -----
+        permissive_found = extract_components_from_text(user_input)
+        if not permissive_found:
+            # only treat as education if there are no component-like tokens
+            if is_education_request(user_input):
+                handle_education_request(user_input)
+                continue
+
+        # ----- 4) Build / budget requests -----
+        if is_build_request(user_input):
+            follow = needs_followup(user_input)
+            if follow:
+                try:
+                    add_to_history("assistant", follow)
+                except Exception:
+                    pass
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                continue
+            try:
+                handle_build_request(user_input)
+            except Exception as e:
+                print(f"⚠️ Build recommendation error: {e}\n")
+            continue
+
+        # ----- 5) Compatibility / PSU / Compare / Recommend (token-aware) -----
+        if contains_any(low, comp_triggers + psu_triggers_quick):
+            follow = needs_followup(user_input)
+            if follow:
+                try:
+                    add_to_history("assistant", follow)
+                except Exception:
+                    pass
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                continue
+            # no follow-up needed: do compatibility check (may include PSU calc)
+            try:
+                check_compatibility(user_input)
+            except Exception as e:
+                print(f"⚠️ Compatibility check error: {e}\n")
+            continue
+
+        # ----- 6) Compare detection -----
+        if any(kw in low for kw in compare_triggers) or contains_any(low, ["compare", "compare to"]):
+            try:
+                compare_components(user_input)
+            except Exception as e:
+                print(f"⚠️ Compare error: {e}\n")
+            continue
+
+        # ----- 7) Recommend/build triggers (fallback) -----
+        if contains_any(low, recommend_triggers):
+            follow = needs_followup(user_input)
+            if follow:
+                try:
+                    add_to_history("assistant", follow)
+                except Exception:
+                    pass
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                continue
+            try:
+                handle_build_request(user_input)
+            except Exception as e:
+                print(f"⚠️ Build recommendation error: {e}\n")
+            continue
+
+        if handle_store_request(user_input):
+            continue
+
+        # ----- 8) Final fallback: no matches found -----
+        print("⚠️ No matching component found in the database.\n")
+        print("Tip: Try searching by model number or brand (e.g., '5600X', 'RTX 4060', 'MSI PRO X670').")
+        try:
+            add_to_history(
+                "assistant", "No matching component found; suggested user try model numbers or ask to list categories.")
+        except Exception:
+            pass
+        continue
+
+
+# =============================
+# 🧠 Flask Integration Function
+# =============================
+
+# near end of ARsemble_ai.py — add this
+# At end of ARSEMBLE_AI.py (after all functions)
+
+def handle_query(user_input):
+    """Return a full textual reply string. Adds debug logging to stderr."""
+    debug_prefix = f"[{datetime.datetime.now().isoformat()}] [handle_query] "
+    # small debug to stderr (visible in server logs)
+    print(debug_prefix + "Received input: " +
+          repr(user_input), file=sys.stderr)
+
+    if not user_input or not str(user_input).strip():
+        return "Please enter a question."
+
+    # capture printed output
+    buf = io.StringIO()
+    old_stdout = sys.stdout
+    try:
+        sys.stdout = buf
+        # reuse your existing flow — this is same logic as CLI but returns string
+        low = user_input.lower().strip()
+
+        # component lookup (local-first)
+        matches = find_component(user_input)
+        if matches:
+            # if compatibility wording present, check compatibility first
+            comp_triggers_local = [" compatible ", "compatibility", "is compatible",
+                                   "compatible with", "fit with", "works with", "is it compatible"]
+            if contains_any(low, comp_triggers_local):
+                try:
+                    handled = check_compatibility(user_input)
+                    if handled:
+                        return buf.getvalue()
+                except Exception as e:
+                    print(f"⚠️ Compatibility handler error: {e}\n")
+
+            category, info, component_key = matches[0]
+            try:
+                handled = respond_from_local(component_key, info, user_input)
+            except Exception as e:
+                handled = False
+                print(f"⚠️ Local response error: {e}")
+
+            if handled:
+                return buf.getvalue()
+
+            try:
+                ask_gemini(user_input, {category: info})
+            except Exception as e:
+                print(f"⚠️ Error while querying Gemini: {e}\n")
+                try:
+                    name = info.get("name", component_key)
+                    price = info.get("price", "N/A")
+                    keys = [k for k in (
+                        "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
+                    specs = " • ".join([f"{k}: {info[k]}" for k in keys])
+                    print(
+                        f"\n🤖 ARIA says (local fallback):\n{name}\n{specs}\nPrice: {price}\n\n" + "-" * 60 + "\n")
+                except Exception:
+                    print("⚠️ Unable to show local fallback data.\n")
+            return buf.getvalue()
+
+        # Quick PSU handler
+        psu_triggers_quick = ["psu", "power supply", "power recommendation", "watt",
+                              "wattage", "power draw", "how much watt", "how much wattage"]
+        if contains_any(low, psu_triggers_quick):
+            follow = needs_followup(user_input)
+            if follow:
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                return buf.getvalue()
+            try:
+                handle_psu_request(user_input)
+            except Exception as e:
+                print(f"⚠️ PSU handler error: {e}\n")
+            return buf.getvalue()
+
+        # Education
+        permissive_found = extract_components_from_text(user_input)
+        if not permissive_found:
+            if is_education_request(user_input):
+                handle_education_request(user_input)
+                return buf.getvalue()
+
+        # Build
+        if is_build_request(user_input):
+            follow = needs_followup(user_input)
+            if follow:
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                return buf.getvalue()
+            handle_build_request(user_input)
+            return buf.getvalue()
+
+        # Compatibility / compare
+        comp_triggers = [" compatible ", "compatibility", "is compatible",
+                         "compatible with", "fit with", "works with", "is it compatible"]
+        if contains_any(low, comp_triggers + psu_triggers_quick):
+            follow = needs_followup(user_input)
+            if follow:
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                return buf.getvalue()
+            try:
+                check_compatibility(user_input)
+            except Exception as e:
+                print(f"⚠️ Compatibility check error: {e}\n")
+            return buf.getvalue()
+
+        # Compare
+        if any(kw in low for kw in [" vs ", " vs. ", " versus "]) or contains_any(low, ["compare", "compare to"]):
+            try:
+                compare_components(user_input)
+            except Exception as e:
+                print(f"⚠️ Compare error: {e}\n")
+            return buf.getvalue()
+
+        # Recommend/build
+        recommend_triggers = ["recommend a build", "build for", "suggest a build",
+                              "pc build", "budget build", "recommend build", "suggest build"]
+        if contains_any(low, recommend_triggers):
+            follow = needs_followup(user_input)
+            if follow:
+                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+                return buf.getvalue()
+            try:
+                handle_build_request(user_input)
+            except Exception as e:
+                print(f"⚠️ Build recommendation error: {e}\n")
+            return buf.getvalue()
+
+        # fallback
+        print("⚠️ No matching component found in the database.\n")
+        print("Tip: Try searching by model number or brand (e.g., '5600X', 'RTX 4060', 'MSI PRO X670').")
+        return buf.getvalue()
+
+    finally:
+        sys.stdout = old_stdout
