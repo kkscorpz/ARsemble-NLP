@@ -15,15 +15,30 @@ from dotenv import load_dotenv
 import os
 import google.genai as genai
 
-load_dotenv(encoding="utf-8-sig")
+from pathlib import Path
 
-GENAI_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GENAI_API_KEY")
+# Try to load local .env only when present and safe
+env_path = Path(".env")
+if env_path.exists():
+    try:
+        load_dotenv()  # will raise if file encoding broken; safe-guard earlier helps
+    except Exception as e:
+        print("Warning: load_dotenv() failed (continuing). Error:",
+              e, file=sys.stderr)
 
-if not GENAI_API_KEY:
-    print("⚠️ GENAI API key not found. Set GOOGLE_API_KEY or GENAI_API_KEY in environment (.env or platform settings).")
-    client = None
+# Use a clear env var name
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv(
+    "samplekey") or os.getenv("GEMINI_API")
+
+# Initialize client only if we have API key; else leave as None and handle gracefully
+client = None
+if API_KEY:
+    try:
+        client = genai.Client(api_key=API_KEY)
+    except Exception as e:
+        print("Warning: failed to initialize genai client:", e, file=sys.stderr)
 else:
-    client = genai.Client(api_key=GENAI_API_KEY)
+    print("Warning: GEMINI API key not found in environment (GEMINI_API_KEY). Gemini disabled.", file=sys.stderr)
 
 
 # -------------------------------
@@ -2336,10 +2351,8 @@ def ask_gemini(user_query, found_data):
     - Sanitizes, deduplicates, and formats Gemini's reply into simple bullets.
     - Prints the final formatted text and returns it (or None on failure).
     """
-    # guard: ensure client exists
-    try:
-        _ = client
-    except NameError:
+    # Ensure client exists and is initialized
+    if not client:
         raise RuntimeError(
             "Gemini client not found. Make sure `client = genai.Client(...)` is defined.")
 
@@ -2417,18 +2430,15 @@ End response.
                 contents=prompt
             )
 
-            # Try to access text attribute robustly
+            # Extract text from response safely
             text = None
             if hasattr(response, "text") and response.text:
                 text = response.text
             elif hasattr(response, "output") and getattr(response, "output"):
-                # some SDKs may store content in .output; try to extract
                 out = getattr(response, "output")
-                # naive extraction for safety:
                 if isinstance(out, str):
                     text = out
                 elif isinstance(out, (list, tuple)) and len(out) > 0:
-                    # join textual pieces
                     text = " ".join(map(str, out))
                 else:
                     text = str(out)
@@ -2452,18 +2462,15 @@ End response.
             # Convert lines like "Key: Value" into "• Key: Value" and keep existing bullets
             normalized = []
             for ln in raw_lines:
-                # standardize existing bullets
                 if re.match(r'^[\-\u2022]\s+', ln):
                     content = re.sub(r'^[\-\u2022]\s+', '', ln)
                     normalized.append(f"• {content}")
                 elif ':' in ln and len(ln.split(':', 1)[0].split()) < 6:
-                    # treat "Label: Value" lines as bullets
                     parts = ln.split(':', 1)
                     label = parts[0].strip()
                     val = parts[1].strip()
                     normalized.append(f"• {label}: {val}")
                 else:
-                    # keep as-is (likely a header or short sentence)
                     normalized.append(ln)
 
             # Deduplicate adjacent repeated lines (common model repetition bug)
@@ -2476,12 +2483,10 @@ End response.
                 prev = ln
 
             # Further de-duplicate by collapsing repeated blocks (if the entire block repeats)
-            # simple approach: join and remove consecutive duplicate paragraphs
             final_lines = []
             seen_blocks = set()
-            # group by blank-line separated paragraphs
             para = []
-            for ln in deduped + [""]:  # sentinel to flush last paragraph
+            for ln in deduped + [""]:
                 if ln == "":
                     if para:
                         block = "\n".join(para)
@@ -2492,15 +2497,11 @@ End response.
                         para = []
                 else:
                     para.append(ln)
-            # remove trailing blank if present
+
             if final_lines and final_lines[-1] == "":
                 final_lines = final_lines[:-1]
 
             formatted_text = "\n".join(final_lines)
-
-            # Final small cleanup: ensure header lines (like component name) are not prefixed with bullet
-            # If first line starts with '• ' and next lines contain ':', assume bulletized header — convert back
-            # (But keep simple: leave as-is if uncertain)
 
             # Print and return
             print("\n🤖 ARIA says:\n")
@@ -2510,7 +2511,7 @@ End response.
 
         except Exception as e:
             last_error = e
-            # transient server overload message commonly contains 503 or 'overloaded'
+            # Retry on transient errors (server overload or similar)
             err_str = str(e).lower()
             if "503" in err_str or "overload" in err_str or "busy" in err_str:
                 if attempt < max_attempts:
@@ -2524,20 +2525,16 @@ End response.
                         "❌ Gemini is currently overloaded. Attempting local fallback...\n")
                     break
             else:
-                # non-transient error — show and return
                 print(f"⚠️ Error while calling Gemini: {e}\n")
                 return None
 
-    # If we get here, all attempts failed — provide a respectful fallback using found_data
+    # If we get here, all attempts failed — provide a fallback using found_data
     try:
         if found_data:
-            # Pretty-print the provided local data succinctly
             out_lines = [
                 "⚠️ Gemini unavailable — showing local data instead:", "-" * 40]
             for cat, info in (found_data.items() if isinstance(found_data, dict) else []):
-                # info may be a dict with a single component or multiple; iterate safely
                 if isinstance(info, dict):
-                    # if this dict looks like a single component (has 'name'), print it
                     if "name" in info:
                         name = info.get("name")
                         price = info.get("price", "N/A")
@@ -2546,7 +2543,6 @@ End response.
                         specs = " • ".join([f"{k}: {info[k]}" for k in keys])
                         out_lines.append(f"- {name} — {specs} — {price}")
                     else:
-                        # iterate inner keys
                         for subk, subinfo in info.items():
                             name = subinfo.get("name", subk)
                             price = subinfo.get("price", "N/A")
@@ -2568,6 +2564,8 @@ End response.
 
 
 # Word Matching Utilities (used across intents)
+
+
 def contains_word(haystack, word):
     """Safe word-boundary check (case-insensitive)."""
     return re.search(rf"\b{re.escape(word)}\b", haystack, flags=re.I) is not None
@@ -2604,6 +2602,19 @@ if __name__ == "__main__":
             continue
 
         low = user_input.lower().strip()
+
+        if re.search(r'\b(list|show|give me|give|all|what are|which are)\b', low):
+            listing = list_components_by_category(user_input)
+            if listing:
+                print("\n🤖 ARIA — Component List:\n")
+                print(listing)
+                print("\n" + "-" * 60 + "\n")
+            try:
+                add_to_history(
+                    "assistant", f"Listed components for query: {user_input}")
+            except Exception:
+                pass
+            continue
 
         # exit
         if low in ["exit", "quit", "bye"]:
