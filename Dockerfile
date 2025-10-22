@@ -4,7 +4,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV TOKENIZERS_PARALLELISM=false    # <- set here
+ENV TOKENIZERS_PARALLELISM=false  
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
