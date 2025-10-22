@@ -9,44 +9,52 @@
   <body>
     <div class="container">
       <header class="header">
-        <h1>🖥️ ARsemble AI - PC Expert</h1>
-        <p>Your local assistant for PC components, compatibility & stores</p>
+        <div class="header-left">
+          <h1>🖥️ ARIA</h1>
+          <p>Local PC assistant — components, compatibility & builds</p>
+        </div>
+        <div class="header-right">
+          <small class="badge">Local Demo</small>
+        </div>
       </header>
 
       <section class="examples">
         <div
           class="chip"
-          onclick="setExample('What is the socket type of the AMD Ryzen 5 5600X?')"
+          onclick="setExample('Recommend an entry-level build for ₱25k')"
         >
-          Socket for 5600X
+          Entry-level build (₱25k)
         </div>
         <div
           class="chip"
-          onclick="setExample('Will the AMD Ryzen 5 5600X work with the ASUS TUF Gaming B550-PLUS motherboard?')"
+          onclick="setExample('Recommend a mid-range gaming PC for ₱60,000')"
         >
-          Compatibility: 5600X & B550
+          Mid-range gaming (₱60k)
         </div>
         <div
           class="chip"
-          onclick="setExample('What PSU do I need for an NVIDIA GTX 750 Ti and an AMD Ryzen 5 5600X?')"
+          onclick="setExample('Recommend a high-end workstation for ₱120,000')"
         >
-          PSU: 750 Ti + 5600X
+          Workstation (₱120k)
         </div>
         <div
           class="chip"
-          onclick="setExample('what TDP does Intel Core i7 13700K have?')"
+          onclick="setExample('Check if Ryzen 5 5600X is compatible with MSI PRO B550M-P')"
         >
-          i7-13700K TDP
+          Compat: 5600X + B550M
         </div>
-        <div class="chip" onclick="setExample('Where is SMFP Computer?')">
-          Where is SMFP Computer?
+        <div
+          class="chip"
+          onclick="setExample('What PSU do I need for NVIDIA GTX 1060 and Ryzen 5 3600?')"
+        >
+          PSU estimate
         </div>
       </section>
 
-      <main id="chat" class="chat">
+      <main id="chat" class="chat" role="log" aria-live="polite">
         <div class="message bot">
-          Hello! I'm ARsemble AI. Ask about component specs, compatibility, PSU
-          needs, or store locations (try: "Where is SMFP Computer?").
+          Hello! I'm ARsemble AI. Ask about component specs, compatibility, PSI
+          needs, or stores. Try a chip above.
         </div>
       </main>
 
@@ -61,11 +69,11 @@
 
       <footer class="footer">
         <small
-          >Local demo • Uses your Flask backend at <code>/chat</code> when
-          needed.</small
+          >Local demo • Uses your Flask backend at <code>/chat</code>.</small
         >
       </footer>
     </div>
+
+    <script src="/static/app.js"></script>
   </body>
-  <script src="/static/app.js"></script>
 </html>

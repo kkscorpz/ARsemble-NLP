@@ -1,21 +1,37 @@
-/* style.css */
+/* style.css - polished ARsemble UI */
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
+:root {
+    --bg-start: #667eea;
+    --bg-end: #764ba2;
+    --panel-bg: #ffffff;
+    --muted: #6b7280;
+    --accent-1: #007bff;
+    --accent-2: #0056b3;
+    --chip-bg: #fff;
+    --chip-border: #e1e4e8;
+    --rec-bg: #fff3f2;
+    --user-grad-a: #007bff;
+    --user-grad-b: #0056b3;
+}
+
 body {
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-end) 100%);
     min-height: 100vh;
     padding: 20px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .container {
     max-width: 920px;
     margin: 0 auto;
-    background: #fff;
+    background: var(--panel-bg);
     border-radius: 14px;
     overflow: hidden;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
@@ -23,6 +39,7 @@ body {
     flex-direction: column;
 }
 
+/* header */
 .header {
     padding: 22px;
     text-align: center;
@@ -40,6 +57,7 @@ body {
     font-size: 0.95rem;
 }
 
+/* example chips */
 .examples {
     padding: 12px 18px;
     display: flex;
@@ -50,26 +68,35 @@ body {
 }
 
 .chip {
-    background: #fff;
-    border: 1px solid #e1e4e8;
+    background: var(--chip-bg);
+    border: 1px solid var(--chip-border);
     padding: 8px 12px;
     border-radius: 16px;
     cursor: pointer;
     font-size: 0.9rem;
+    transition: transform .12s ease, box-shadow .12s ease;
+    user-select: none;
 }
 
+.chip:focus,
 .chip:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.07);
+    outline: none;
 }
 
+/* chat area */
 .chat {
     padding: 20px;
     height: 420px;
     overflow: auto;
     background: #fafafa;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
+/* messages */
 .message {
     margin: 12px 0;
     padding: 14px 16px;
@@ -77,20 +104,50 @@ body {
     max-width: 78%;
     word-wrap: break-word;
     white-space: pre-line;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.04);
 }
 
 .bot {
     background: #fff;
     border: 1px solid #ececec;
     margin-right: auto;
+    color: #111;
 }
 
 .user {
-    background: linear-gradient(135deg, #007bff, #0056b3);
+    background: linear-gradient(135deg, var(--user-grad-a), var(--user-grad-b));
     color: #fff;
     margin-left: auto;
 }
 
+/* Recommendation area (chips from assistant) */
+.recs {
+    padding: 12px 18px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    border-top: 1px solid #f0f0f0;
+    background: linear-gradient(180deg, #fff, #fff);
+}
+
+.rec-chip {
+    background: var(--rec-bg);
+    border: 1px solid #ffd0c6;
+    color: #111;
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform .12s ease, box-shadow .12s ease, background .12s;
+}
+
+.rec-chip:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+}
+
+/* input area */
 .input-area {
     display: flex;
     gap: 10px;
@@ -108,26 +165,74 @@ input#input {
     outline: none;
 }
 
-#input:focus {
-    border-color: #007bff;
+input#input:focus {
+    border-color: var(--accent-1);
     box-shadow: 0 6px 20px rgba(2, 132, 199, 0.08);
 }
 
 button#sendBtn {
     padding: 12px 20px;
     border-radius: 999px;
-    background: linear-gradient(135deg, #007bff, #0056b3);
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
     color: #fff;
     border: none;
     cursor: pointer;
     font-weight: 600;
 }
 
+/* footer */
 .footer {
     padding: 10px 14px;
     background: #fafafa;
     text-align: center;
     font-size: 0.85rem;
-    color: #666;
+    color: var(--muted);
     border-top: 1px solid #eee;
+}
+
+/* responsive */
+@media (max-width: 700px) {
+    .container {
+        margin: 10px;
+    }
+
+    .chat {
+        height: 62vh;
+        padding: 14px;
+    }
+
+    .header h1 {
+        font-size: 1.25rem;
+    }
+
+    .chip {
+        font-size: 0.85rem;
+        padding: 7px 10px;
+    }
+
+    .rec-chip {
+        padding: 7px 10px;
+        font-size: 0.9rem;
+    }
+        .recommendations {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 8px 0 18px;
+        }
+    
+        .rec-btn {
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid #d0e2ff;
+            background: #f6faff;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: #084298;
+        }
+    
+        .rec-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        }
 }

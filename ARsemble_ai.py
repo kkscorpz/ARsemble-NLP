@@ -1,3 +1,7 @@
+from typing import Optional
+from collections import OrderedDict
+import threading
+import logging
 import unicodedata
 import datetime
 import sys
@@ -1640,11 +1644,12 @@ def handle_build_request(user_query):
     Entry point for build planning:
     - If user gives explicit budget, use it.
     - If user asks 'budget build' or 'entry-level', map to tier ranges and propose a budget midpoint.
+    Returns the textual output (also prints it for compatibility).
     """
-    low = user_query.lower()
+    low = (user_query or "").lower()
     budget = parse_budget_from_text(user_query)
 
-    # if user mentions tier words, map to tier midpoint
+    # map tier words to midpoint if no explicit budget found
     if budget is None:
         if any(w in low for w in ["budget build", "budget", "₱15k", "15k", "15,000"]):
             low_tier = BUILD_TIERS["budget"]
@@ -1659,15 +1664,27 @@ def handle_build_request(user_query):
             low_tier = BUILD_TIERS["high"]
             budget = max(70000, low_tier[0])
 
-        if budget is None:
-            msg = "Please specify a budget (e.g., '₱25k' or 'Recommend a build for ₱40,000')."
-            print("\n🤖 ARIA — Build Planner:\n" + msg + "\n\n" + "-"*60 + "\n")
-            return
+    if budget is None:
+        msg = "Please specify a budget (e.g., '₱25k' or 'Recommend a build for ₱40,000')."
+        out = "\n🤖 ARIA — Build Planner:\n" + msg + "\n\n" + "\n"
+        print(out)
+        try:
+            add_to_history("assistant", out)
+        except Exception:
+            pass
+        return out
 
-    # assemble build
+    # Assemble build
     build = assemble_build_for_budget(budget)
     output = format_build_output(build, budget)
+
+    # Print and also return so caller (handle_query) can include it in response_obj
     print(output)
+    try:
+        add_to_history("assistant", output)
+    except Exception:
+        pass
+    return output
 
 
 # -------------------------------
@@ -2211,8 +2228,8 @@ def extract_components_from_text(query):
 
 def compare_components(user_query):
     """
-    Improved compare: chooses relevant fields by category, uses aliases,
-    and prints N/A for missing values instead of aborting.
+    Compare two components from local DB. If both are same category (e.g., motherboards),
+    print a side-by-side summary using local fields; do not call Gemini unnecessarily.
     """
     found = extract_components_from_text(user_query)
     comps = []
@@ -2226,105 +2243,490 @@ def compare_components(user_query):
     a_cat, a_info, a_key = comps[0]
     b_cat, b_info, b_key = comps[1]
 
-    # If you still want to forbid cross-category compare, keep this:
+    # If categories differ, provide basic specs and suggest more specific compare
     if a_cat != b_cat:
-        print("\n🤖 ARIA says:\n\nYou cannot compare a CPU with a GPU. Please specify two CPUs or two GPUs to compare.\n")
+        print("\n🤖 ARIA says:\n\nThese are different component types — here's a quick summary of each:\n")
+
+        def short_specs(info):
+            keys = []
+            for k in ("socket", "vram", "cores", "clock", "tdp", "capacity", "ram_type", "wattage"):
+                if k in info:
+                    keys.append(f"{k}: {info[k]}")
+            return " • ".join(keys) if keys else "No quick specs available."
+        print(f"{a_info.get('name')}: {short_specs(a_info)}")
+        print(f"{b_info.get('name')}: {short_specs(b_info)}\n")
+        print("Tip: compare two items of the same category for a detailed side-by-side view (e.g., two motherboards or two CPUs).")
         return
 
-    # Relevant fields and aliases per category
-    category_fields = {
+    # For same-category comparisons, choose relevant fields
+    fields_map = {
+        "motherboard": [
+            ("Socket", ["socket"]),
+            ("Form factor", ["form_factor", "form factor"]),
+            ("RAM type", ["ram_type", "ram type"]),
+            ("RAM slots", ["ram_slots", "ram slots"]),
+            ("NVMe slots", ["nvme_slots"]),
+            ("Price", ["price"]),
+            ("Compatibility note", ["compatibility"])
+        ],
         "cpu": [
-            ("socket", ["socket"]),
-            ("cores/threads", ["cores", "threads"]),
-            ("clock", ["clock", "boost", "boost clock", "clock speed"]),
-            ("tdp", ["tdp", "power", "wattage"]),
-            ("igpu", ["igpu", "integrated graphics"]),
-            ("price", ["price", "cost"]),
-            ("compatibility", ["compatibility"])
+            ("Socket", ["socket"]),
+            ("Cores/Threads", ["cores", "threads"]),
+            ("Clock", ["clock", "boost", "boost clock"]),
+            ("TDP", ["tdp", "wattage"]),
+            ("Integrated GPU", ["igpu"]),
+            ("Price", ["price"])
         ],
         "gpu": [
-            ("vram", ["vram", "memory"]),
-            ("clock", ["clock", "boost", "boost clock"]),
-            ("power", ["power", "tdp", "wattage"]),
-            ("slot", ["slot"]),
-            ("price", ["price", "cost"]),
-            ("compatibility", ["compatibility"])
+            ("VRAM", ["vram"]),
+            ("Clock", ["clock", "boost"]),
+            ("Power", ["power", "tdp", "wattage"]),
+            ("Slot", ["slot"]),
+            ("Price", ["price"])
         ],
-        "ram": [
-            ("capacity", ["capacity"]),
-            ("speed", ["speed"]),
-            ("type", ["ram_type", "ram type", "ram"]),
-            ("price", ["price", "cost"]),
-            ("compatibility", ["compatibility"])
-        ],
-        "motherboard": [
-            ("socket", ["socket"]),
-            ("form_factor", ["form_factor", "form factor"]),
-            ("ram_slots", ["ram_slots"]),
-            ("ram_type", ["ram_type", "ram type"]),
-            ("nvme_slots", ["nvme_slots"]),
-            ("price", ["price", "cost"]),
-            ("compatibility", ["compatibility"])
-        ],
-        "storage": [
-            ("capacity", ["capacity"]),
-            ("interface", ["interface"]),
-            ("price", ["price", "cost"]),
-            ("compatibility", ["compatibility"])
-        ],
-        "psu": [
-            ("wattage", ["wattage", "wattage"]),
-            ("efficiency", ["efficiency"]),
-            ("price", ["price", "cost"]),
-            ("compatibility", ["compatibility"])
-        ],
-        "cpu_cooler": [
-            ("cooler_type", ["cooler_type", "cooler type"]),
-            ("size", ["size"]),
-            ("socket", ["socket"]),
-            ("price", ["price", "cost"]),
-            ("compatibility", ["compatibility"])
+        # fallback
+        "default": [
+            ("Type", ["type"]),
+            ("Price", ["price"]),
+            ("Compatibility", ["compatibility"])
         ]
     }
 
-    # default fallback fields if category unknown
-    default_fields = [
-        ("type", ["type"]), ("price", ["price", "cost"]
-                             ), ("compatibility", ["compatibility"])
-    ]
+    fields_spec = fields_map.get(a_cat, fields_map["default"])
 
-    fields_spec = category_fields.get(a_cat, default_fields)
-
-    # helper to get first present alias value or None
     def get_alias_value(info_dict, aliases):
         for a in aliases:
             if a in info_dict and info_dict[a] not in (None, ""):
                 return info_dict[a]
-        return None
+        return "N/A"
 
-    # build header & print
     print("\n🤖 ARIA — Component Comparison:\n")
     print(f"{a_info.get('name')}  VS  {b_info.get('name')}")
     print("-" * 60)
-
-    # print each chosen field
     for pretty_name, aliases in fields_spec:
-        a_val = get_alias_value(a_info, aliases) or "N/A"
-        b_val = get_alias_value(b_info, aliases) or "N/A"
-
-        # For price, try to normalize numbers for nicer alignment
-        if pretty_name in ("price",):
-            a_num = parse_price(a_val) if isinstance(a_val, str) else None
-            b_num = parse_price(b_val) if isinstance(b_val, str) else None
-            if isinstance(a_num, int):
-                a_val = format_php(a_num)
-            if isinstance(b_num, int):
-                b_val = format_php(b_num)
-
-        # For cores/threads try to preserve the string; otherwise show N/A
-        print(f"{pretty_name.capitalize():18} | {str(a_val):35} | {str(b_val)}")
-
+        a_val = get_alias_value(a_info, aliases)
+        b_val = get_alias_value(b_info, aliases)
+        # Normalize price numbers if present
+        if pretty_name.lower() == "price":
+            try:
+                a_num = parse_price(a_val) if isinstance(a_val, str) else None
+                b_num = parse_price(b_val) if isinstance(b_val, str) else None
+                if a_num:
+                    a_val = format_php(a_num)
+                if b_num:
+                    b_val = format_php(b_num)
+            except:
+                pass
+        print(f"{pretty_name:18} | {str(a_val):35} | {str(b_val)}")
     print("\n" + "-" * 60 + "\n")
+
+
+# ---------- Intent detection (replace your detect_intent) ----------
+# add into/replace detect_intent (small addition)
+def detect_intent(user_text: str) -> str:
+    if not user_text:
+        return "unknown"
+    s = user_text.lower().strip()
+
+    # --- Prioritize educational phrasing ---
+    if re.search(r'^(what|explain|define|why|difference|compare)\b', s):
+        return "education"
+
+    # --- Feature listing: "which gpus use pcie 4.0" ---
+    if re.search(r'\bwhich\b.*\b(?:cpus|gpus|motherboards|mobos|motherboards|rams|storages|psus)?\b.*\b(use|support|have|with)\b.*\bpcie\b', s):
+        return "feature_list"
+    if re.search(r'\bshow\b.*\bpcie\b', s):
+        return "feature_list"
+
+    # --- Socket-specific listing ---
+    if re.search(r'\b(?:list|show|which)\b.*\b(?:cpus|gpus|motherboards|rams|storages|psus)\b.*\b(?:compatible with|for|on|that (?:use|support))\b', s):
+        return "list_socket"
+
+    # --- Build / Budget ---
+    if is_build_request(user_text):
+        return "build"
+
+    # --- PSU triggers ---
+    if contains_any(s, psu_triggers_quick):
+        return "psu"
+
+    # --- Comparison ---
+    if any(x in s for x in [" compare ", " vs ", " versus ", "compare to", "vs."]):
+        return "compare"
+
+    # --- Compatibility ---
+    if re.search(r'\b(?:will|works|work|is)\b.*\b(?:with|on|in)\b', s) or contains_any(s, ["compatible", "compatibility", "fit with", "fit"]):
+        return "compatibility"
+
+    # --- Component lookup ---
+    if find_component(user_text):
+        return "component"
+
+    return "unknown"
+
+
+def info_matches_pcie(info: dict, version_token: str = None) -> bool:
+    """
+    Return True if component info mentions PCIe (and optionally the version_token like 'pcie 4.0' or 'pcie 5').
+    """
+    if not info:
+        return False
+    text_fields = []
+    for k, v in info.items():
+        if isinstance(v, str):
+            text_fields.append(v.lower())
+    hay = " ".join(text_fields)
+    if "pcie" not in hay:
+        return False
+    if not version_token:
+        return True
+    return version_token.lower() in hay
+
+
+# ---------- Recommendation generator by intent ----------
+
+
+def generate_quick_recommendations_intent(q: str, intent: str = None, sub_intent: Optional[str] = None):
+    """
+    Build and return a list of recommendation dicts.
+    Defensive: never returns None.
+    """
+    try:
+        q_text = (q or "").strip()
+        low = q_text.lower()
+
+        # Optional external helpers
+        find_component = globals().get("find_component")
+        recommend_for_component = globals().get("recommend_for_component")
+        parse_budget_from_text = globals().get("parse_budget_from_text")
+        format_php = globals().get("format_php")
+
+        # EDUCATION branch
+        if intent == "education":
+            if sub_intent == "list_pcie_gpus" or re.search(r'which\s+gpus?.*pcie', low):
+                return [
+                    {"id": "list_pcie_gpus", "text": "View GPUs using PCIe 4.0",
+                     "action_query": "Which GPUs use PCIe 4.0?"}
+                ]
+            return [
+                {"id": "learn_compare", "text": "PCIe 4.0 vs 5.0",
+                 "action_query": "Explain PCIe 4.0 vs PCIe 5.0"},
+                {"id": "list_pcie_gpus", "text": "View GPUs using PCIe 4.0",
+                 "action_query": "Which GPUs use PCIe 4.0?"},
+                {"id": "compare_pcie_sata", "text": "Compare PCIe and SATA",
+                 "action_query": "Compare PCIe and SATA"}
+            ]
+
+        # COMPONENT branch
+        if intent == "component":
+            comps = []
+            if callable(find_component):
+                try:
+                    comps = find_component(q_text) or []
+                except Exception:
+                    logger.exception("find_component failed")
+                    comps = []
+            if not comps:
+                return []
+            cat, info, key = comps[0]
+            name = info.get("name", key) if isinstance(info, dict) else key
+            short = ""
+            if callable(recommend_for_component):
+                try:
+                    short = recommend_for_component(cat, info) or ""
+                except Exception:
+                    logger.exception("recommend_for_component failed")
+
+            if cat == "gpu":
+                base = []
+                if short:
+                    base.append({"id": "quick_one", "text": short,
+                                 "action_query": f"Tell me more about {name}"})
+                base.extend([
+                    {"id": "psu_est", "text": "✅ Quick compatibility summary",
+                     "action_query": f"Estimate PSU for {name}"},
+                    {"id": "case_check", "text": "Check case clearance",
+                     "action_query": f"Will {name} fit in a mid tower case?"}
+                ])
+                return base
+
+            if cat == "cpu":
+                return [
+                    {"id": "view_mobos", "text": f"View compatible motherboards for {name}",
+                     "action_query": f"Show motherboards compatible with {name}"},
+                    {"id": "suggest_ram", "text": f"Suggest RAM for {name}",
+                     "action_query": f"Suggest RAM for {name}"},
+                    {"id": "build_with_cpu", "text": f"Build a PC using {name}",
+                     "action_query": f"Recommend a build using {name}"}
+                ]
+
+            if cat == "motherboard":
+                return [
+                    {"id": "view_cpus", "text": f"View CPUs compatible with {name}",
+                     "action_query": f"List CPUs compatible with {name}"},
+                    {"id": "suggest_ram", "text": f"Suggest RAM for {name}",
+                     "action_query": f"Suggest RAM for {name}"},
+                    {"id": "build_with_mobo", "text": f"Build a PC using {name}",
+                     "action_query": f"Recommend a build using {name}"}
+                ]
+
+            return [{"id": "compat_with", "text": "Check compatibility with another part",
+                     "action_query": f"Is {name} compatible with my motherboard?"}]
+
+        # PSU branch
+        if intent == "psu":
+            return [
+                {"id": "psu_brands", "text": "Recommended PSU brands",
+                 "action_query": "Recommend reliable PSU brands"},
+                {"id": "psu_calc", "text": "Open wattage calculator",
+                 "action_query": "How to calculate PSU wattage for my build?"},
+                {"id": "psu_eff", "text": "Learn PSU efficiency ratings",
+                 "action_query": "Explain PSU efficiency 80 Plus ratings"}
+            ]
+
+        # BUILD branch
+        if intent == "build":
+            budget = None
+            if callable(parse_budget_from_text):
+                try:
+                    budget = parse_budget_from_text(q_text)
+                except Exception:
+                    logger.exception("parse_budget_from_text failed")
+                    budget = None
+
+            if budget:
+                try:
+                    low_est = format_php(
+                        int(budget * 0.8)) if callable(format_php) else f"₱{int(budget*0.8)}"
+                    high_est = format_php(
+                        int(budget * 1.2)) if callable(format_php) else f"₱{int(budget*1.2)}"
+                except Exception:
+                    low_est = f"₱{int(budget*0.8)}"
+                    high_est = f"₱{int(budget*1.2)}"
+
+                return [
+                    {"id": "cheaper", "text": f"Cheaper build (~{low_est})",
+                     "action_query": f"Recommend a cheaper build for ₱{budget}"},
+                    {"id": "performance", "text": f"Performance build (~{high_est})",
+                     "action_query": f"Recommend a performance build for ₱{budget}"},
+                    {"id": "upgrade_path", "text": "Upgrade path suggestions",
+                     "action_query": f"Upgrade path for a ₱{budget} build"}
+                ]
+            return [
+                {"id": "pick_tier", "text": "Show example tiers (budget/entry/mid/high)",
+                 "action_query": "Show example builds for gaming and productivity"},
+                {"id": "ask_budget", "text": "Ask for budget",
+                 "action_query": "What's your budget or which tier do you want? (e.g. ₱25k)"}
+            ]
+
+        # COMPARE branch
+        if intent == "compare":
+            return [
+                {"id": "benchmarks", "text": "View benchmark results",
+                 "action_query": "Show benchmark results for these GPUs"},
+                {"id": "price_diff", "text": "Show price difference",
+                 "action_query": "Show price difference between these parts"},
+                {"id": "pairing", "text": "See ideal CPU pairing",
+                 "action_query": "What CPU pairs well with these GPUs?"}
+            ]
+
+        # LIST_SOCKET branch
+        if intent == "list_socket":
+            m = re.search(r'(am4|am5|lga\d{3,4})', low)
+            sock = m.group(1).upper() if m else None
+            if sock:
+                return [
+                    {"id": f"show_cpus_{sock}", "text": f"Show CPUs for {sock}",
+                     "action_query": f"List CPUs compatible with {sock}"},
+                    {"id": f"show_mobos_{sock}", "text": f"Show motherboards for {sock}",
+                     "action_query": f"List motherboards compatible with {sock}"},
+                    {"id": "explain_socket", "text": f"What is {sock} socket?",
+                     "action_query": f"What is {sock} socket?"}
+                ]
+            return [
+                {"id": "show_am4", "text": "Show CPUs for AM4",
+                 "action_query": "List CPUs compatible with AM4"},
+                {"id": "show_am5", "text": "Show CPUs for AM5",
+                 "action_query": "List CPUs compatible with AM5"}
+            ]
+
+        return []
+    except Exception as e:
+        logger.exception("generate_quick_recommendations_intent error: %s", e)
+        return []
+
+
+def handle_query(user_query: str, explicit_intent: Optional[str] = None, request_id: Optional[str] = None):
+    """
+    Full handler — always returns {"response", "recommendations", "sections"} and
+    guarantees a non-empty 'response' when recommendations exist.
+    """
+    # idempotent cache return
+    cached = cache_get(request_id)
+    if cached is not None:
+        logger.info("Returning cached response for request_id=%s", request_id)
+        return cached
+
+    try:
+        q = (user_query or "").strip()
+        low = q.lower()
+        response_text = ""
+        recommendations = []
+        sections = []
+        seen_section_keys = set()
+        intent = explicit_intent or None
+        sub_intent = None
+
+        # quick direct-pattern rules
+        if re.search(r'^\s*what\s+is\s+pcie\s*\?*$', low) or re.search(r'\bwhat\s+is\s+pcie\b', low):
+            intent = "education"
+            sub_intent = None
+        elif re.search(r'which\s+gpus?.*pcie', low) or re.search(r'which.*pcie\s*4', low):
+            intent = "education"
+            sub_intent = "list_pcie_gpus"
+
+        # fallback keyword detection
+        if intent is None:
+            if re.search(r'\b(cpu|ryzen|intel core|core i|rtx|gtx)\b', low):
+                intent = "component"
+            elif re.search(r'\b(motherboard|mobo|socket|am4|am5|lga)\b', low):
+                intent = "component"
+            elif re.search(r'\b(psu|power supply|wattage|watt)\b', low):
+                intent = "psu"
+            elif re.search(r'\b(build|recommend a build|budget)\b', low):
+                intent = "build"
+            elif re.search(r'\b(compare|vs|benchmarks)\b', low):
+                intent = "compare"
+            elif re.search(r'\b(pcie)\b', low):
+                intent = "education"
+            else:
+                intent = "component"
+
+        logger.info("handle_query: detected intent=%s sub_intent=%s for q=%s",
+                    intent, sub_intent, q[:160])
+
+        # handle intents (mutually exclusive)
+        if intent == "education":
+            if sub_intent == "list_pcie_gpus":
+                build_gpu_support_list = globals().get("build_gpu_support_list")
+                gpu_text = _safe_call(
+                    build_gpu_support_list, only_pcie4=True, default=None)
+                if gpu_text:
+                    response_text = f"Which GPUs use PCIe 4.0?\n\n{gpu_text}"
+                else:
+                    response_text = (
+                        "Which GPUs use PCIe 4.0?\n\n"
+                        "Examples include many modern mid- and high-end GPUs (e.g., RTX 3050/3060/4060 series). "
+                        "Tap the recommendation to see a curated list."
+                    )
+                recommendations = generate_quick_recommendations_intent(
+                    q, intent="education", sub_intent="list_pcie_gpus")
+                append_unique_section(sections, "tip_recommendations", {
+                                      "title": "Tip", "body": "Tap a recommendation to see details or get PSU estimates for any GPU."}, seen_section_keys)
+            else:
+                response_text = (
+                    "🔎 Understanding PCIe Slots\n\n"
+                    "PCI Express (PCIe) connects GPUs, SSDs, and network cards to the motherboard. "
+                    "Each new generation doubles the data bandwidth. Higher versions (4.0, 5.0) are "
+                    "faster but backward compatible. A PCIe 4.0 GPU works fine in a PCIe 3.0 slot."
+                )
+                recommendations = generate_quick_recommendations_intent(
+                    q, intent="education")
+
+        elif intent == "component":
+            find_component = globals().get("find_component")
+            comps = _safe_call(find_component, q, default=[]) or []
+            if not comps:
+                response_text = "I couldn't find a matching component. Try a specific model name like 'Ryzen 5 5600X'."
+                recommendations = []
+            else:
+                cat, info, key = comps[0]
+                name = info.get("name", key) if isinstance(info, dict) else key
+                response_text = f"Here's what I found about {name} ({cat})."
+                recommendations = generate_quick_recommendations_intent(
+                    q, intent="component")
+
+        elif intent == "psu":
+            response_text = "🔌 Power supply help — choose a PSU based on TDP and GPU power draw."
+            recommendations = generate_quick_recommendations_intent(
+                q, intent="psu")
+
+        elif intent == "build":
+            parse_budget_from_text = globals().get("parse_budget_from_text")
+            budget = _safe_call(parse_budget_from_text, q, default=None)
+            if budget:
+                format_php = globals().get("format_php")
+                try:
+                    fmt_budget = format_php(budget) if callable(
+                        format_php) else f"₱{budget}"
+                except Exception:
+                    fmt_budget = f"₱{budget}"
+                response_text = f"Recommended builds around {fmt_budget} — pick a tier to see parts."
+            else:
+                response_text = "Tell me your budget (e.g. ₱25k) and I can recommend a build."
+            recommendations = generate_quick_recommendations_intent(
+                q, intent="build")
+
+        elif intent == "compare":
+            response_text = "Comparison tools — pick the parts you want to compare."
+            recommendations = generate_quick_recommendations_intent(
+                q, intent="compare")
+
+        else:
+            # If something unexpected happens, still get recs and fill reply
+            recommendations = generate_quick_recommendations_intent(
+                q, intent=intent)
+
+        # Guard: if recommendations present but response empty, auto-fill a context-aware reply
+        if (not response_text or response_text.strip() == "") and recommendations:
+            default_map = {
+                "education": "Here is some educational info and suggested actions.",
+                "component": "Here are suggestions related to that component.",
+                "psu": "Here are PSU-related suggestions.",
+                "build": "Here are build suggestions and actions.",
+                "compare": "Here are comparison actions you can use.",
+            }
+            response_text = default_map.get(
+                intent, "Here are some suggestions.")
+            logger.info("Auto-filled response_text for intent=%s", intent)
+
+        result = {"response": response_text,
+                  "recommendations": recommendations, "sections": sections}
+        cache_set(request_id, result)
+        logger.info("handle_query: returning response (intent=%s) with %d recs",
+                    intent, len(recommendations))
+        return result
+
+    except Exception as e:
+        logger.exception("handle_query unexpected error: %s", e)
+        result = {"response": "Sorry, something went wrong while processing your query.",
+                  "recommendations": [], "sections": []}
+        cache_set(request_id, result)
+        return result
+
+
+def parse_two_components_for_compat(query: str):
+    """
+    Try to extract two component substrings from queries like:
+      'Will Ryzen 5 5600X work with ASUS TUF GAMING B550-PLUS?'
+    Returns tuple (left_matches, right_matches) where each is list[(cat,info,key)] or (None,None).
+    """
+    s = query
+    # split on ' with ' or ' & ' or ' and ' when context suggests compatibility
+    # prefer the first ' with ' occurrence
+    parts = re.split(
+        r'\b with \b|\b & \b|\b and \b|\b versus \b|\b vs \b', s, flags=re.I)
+    if len(parts) >= 2:
+        left = parts[0].strip()
+        right = " with ".join(parts[1:]).strip()  # re-join if multiple
+        left_matches = find_component(left)
+        right_matches = find_component(right)
+        return left_matches, right_matches
+    # fallback: extract components from full text
+    matches = find_component(query)
+    if matches and len(matches) >= 2:
+        return [matches[0]], [matches[1]]
+    return [], []
 
 
 def add_to_history(role, text, meta=None):
@@ -2349,6 +2751,241 @@ def get_context_snippet(max_chars=1500):
         out.append(t)
         total += len(t)
     return "\n".join(out)
+
+
+# -------------------------------
+# 🔁 Recommendations (UI-friendly)
+# -------------------------------
+def recommend_for_component(category, info):
+    """Generate a short one-line recommendation for a single component (UI-friendly)."""
+    name = info.get("name", "this component")
+    socket = (info.get("socket") or "").upper()
+    ram_type = (info.get("ram_type") or info.get(
+        "compatibility") or "").upper()
+    watt = info.get("wattage") or info.get("power") or info.get("tdp") or ""
+    try:
+        watt_n = parse_watts(watt) or None
+    except Exception:
+        watt_n = None
+
+    if category == "cpu":
+        if socket:
+            return f"Pair {name} with a {socket} motherboard and matching RAM (ask me to pick one)."
+        return f"Pair {name} with a compatible motherboard and RAM (tell me your budget)."
+    if category == "gpu":
+        if watt_n:
+            rec_w = round_up_psu(int(watt_n + 120))  # assume baseline + GPU
+            return f"{name} → consider a quality {rec_w}W PSU and check case GPU length."
+        return f"{name} → ensure PSU has required PCIe connectors and enough wattage."
+    if category == "motherboard":
+        if ram_type:
+            return f"{name} supports {ram_type} — pick RAM of that type and a matching CPU."
+        if socket:
+            return f"{name} uses {socket} socket — choose a CPU with that socket."
+        return f"{name} — check socket and RAM type; I can pick matching CPU/RAM for you."
+    if category == "ram":
+        if ram_type:
+            return f"Select {ram_type} RAM for best compatibility with matching motherboards."
+        return "Pick RAM that matches your motherboard's RAM type (DDR4 or DDR5)."
+    if category == "psu":
+        return f"{name} — leave ~25% headroom above estimated system draw; choose 80+ Bronze or better."
+    if category == "storage":
+        return f"{name} is good for fast storage — use as system drive and add larger HDD for bulk files."
+    return f"{name} — I can suggest compatible parts if you share a budget or intended usage."
+
+
+# ------------------- Logging + helpers + idempotent cache -------------------
+
+# Logging (safe: won't double configure if root has handlers)
+logger = logging.getLogger("aria_assistant")
+if not logging.root.handlers:
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s: %(message)s")
+
+
+def _safe_call(fn, *args, default=None, **kwargs):
+    try:
+        if callable(fn):
+            return fn(*args, **kwargs)
+    except Exception:
+        logger.exception("Exception in _safe_call for %s",
+                         getattr(fn, "__name__", str(fn)))
+    return default
+
+
+def append_unique_section(sections_list, key, content, seen_keys):
+    if key not in seen_keys:
+        seen_keys.add(key)
+        sections_list.append(content)
+
+
+# Simple thread-safe LRU cache for processed request_id -> response
+_processed_lock = threading.Lock()
+_processed_cache = OrderedDict()
+_PROCESSED_CACHE_MAX = 200  # keep last 200 responses to avoid unbounded memory growth
+
+
+def cache_get(request_id):
+    if not request_id:
+        return None
+    with _processed_lock:
+        return _processed_cache.get(request_id)
+
+
+def cache_set(request_id, value):
+    if not request_id:
+        return
+    with _processed_lock:
+        # move-to-end for LRU semantics
+        if request_id in _processed_cache:
+            _processed_cache.move_to_end(request_id)
+        _processed_cache[request_id] = value
+        # trim if necessary
+        while len(_processed_cache) > _PROCESSED_CACHE_MAX:
+            _processed_cache.popitem(last=False)
+
+
+def generate_quick_recommendations(user_query: str) -> list:
+    """
+    Create 2-4 UI-friendly, tappable recommendations based on the user's query.
+    Keep suggestions short and contextual (max 4 items).
+    """
+    try:
+        recs = []
+        q = (user_query or "").strip()
+        if not q:
+            return []
+
+        low = q.lower()
+
+        # 1) If this is a build request or contains 'recommend' + budget/tier
+        budget = parse_budget_from_text(q)
+        if is_build_request(q) or budget:
+            # infer budget if missing but tier present
+            if not budget:
+                if "entry" in low:
+                    budget = (BUILD_TIERS["entry"][0] +
+                              BUILD_TIERS["entry"][1]) // 2
+                elif "mid" in low:
+                    budget = (BUILD_TIERS["mid"][0] +
+                              BUILD_TIERS["mid"][1]) // 2
+                elif "high" in low:
+                    budget = BUILD_TIERS["high"][0]
+            if budget:
+                bstr = format_php(budget)
+                recs.append({
+                    "id": "view_full_build",
+                    "text": f"💻 View full {bstr} build",
+                    "action_query": f"Show complete build for ₱{budget}"
+                })
+                recs.append({
+                    "id": "focus_cpu",
+                    "text": "💪 Optimize for CPU",
+                    "action_query": f"Recommend a CPU-optimized build for ₱{budget}"
+                })
+                recs.append({
+                    "id": "focus_gpu",
+                    "text": "🎮 Optimize for GPU",
+                    "action_query": f"Recommend a GPU-optimized build for ₱{budget}"
+                })
+                recs.append({
+                    "id": "alt_cheaper",
+                    "text": "🔁 Cheaper alternative parts",
+                    "action_query": f"Suggest cheaper alternatives for a ₱{budget} build"
+                })
+                # cap to 4
+                return recs[:4]
+
+        # 2) Socket listing queries: "list CPUs compatible with AM4"
+        m_socket = re.search(
+            r'\b(list|show|which)\b.*\b(cpus|gpus|motherboards|rams|storages|psus)\b.*\b(?:compatible with|for|on|that (?:use|support))\b\s*(am4|am5|lga\d{3,4})\b', q, flags=re.I)
+        if m_socket:
+            target_cat = m_socket.group(2).lower()
+            sock = m_socket.group(3).upper()
+            recs.append({
+                "id": "top5_socket",
+                "text": f"⭐ Show top 5 {target_cat} for {sock}",
+                "action_query": f"Show top 5 {target_cat} compatible with {sock}"
+            })
+            recs.append({
+                "id": "explain_socket",
+                "text": f"🔎 What is {sock}?",
+                "action_query": f"What is the {sock} socket?"
+            })
+            recs.append({
+                "id": "build_socket",
+                "text": f"🧩 Recommend a build using {sock}",
+                "action_query": f"Recommend a build using {sock}"
+            })
+            return recs[:3]
+
+        # 3) If components detected (single or multiple)
+        comps = extract_components_from_text(q)
+        if comps:
+            # limit to first two for suggestions
+            if len(comps) == 1:
+                cat, info, key = comps[0]
+                name = info.get("name", key)
+                # short one-line recommendation
+                short = recommend_for_component(cat, info)
+                if short:
+                    recs.append({"id": "quick_one", "text": short,
+                                "action_query": f"Tell me more about {name}"})
+                if cat == "cpu":
+                    recs.append({"id": "pick_mobo", "text": "🧩 Pick compatible motherboard",
+                                "action_query": f"Pick a motherboard for {name}"})
+                    recs.append({"id": "suggest_ram", "text": "🧠 Suggest RAM",
+                                "action_query": f"Recommend RAM for {name}"})
+                elif cat == "gpu":
+                    recs.append({"id": "psu_est", "text": "🔌 Estimate PSU",
+                                "action_query": f"Estimate PSU for {name}"})
+                    recs.append({"id": "case_check", "text": "📏 Check case clearance",
+                                "action_query": f"Will {name} fit in a mid tower case?"})
+                else:
+                    recs.append({"id": "compat_with", "text": "🔎 Check compatibility with another part",
+                                "action_query": f"Is {name} compatible with my motherboard?"})
+                return recs[:4]
+            else:
+                # two or more components -> compatibility quick action + PSU if needed
+                recs.append(
+                    {"id": "compat_summary", "text": "✅ Quick compatibility summary", "action_query": q})
+                cats = [c for c, _, _ in comps[:3]]
+                if "gpu" in cats and "cpu" in cats:
+                    cpu = next((info.get("name")
+                               for c, info, _ in comps if c == "cpu"), None)
+                    gpu = next((info.get("name")
+                               for c, info, _ in comps if c == "gpu"), None)
+                    if cpu and gpu:
+                        recs.append({"id": "psu_pair", "text": "🔌 Estimate PSU for CPU+GPU",
+                                    "action_query": f"Estimate PSU for {cpu} and {gpu}"})
+                recs.append({"id": "compare", "text": "🔁 Compare these parts",
+                            "action_query": f"Compare {comps[0][2]} and {comps[1][2]}"})
+                return recs[:3]
+
+        # 4) PSU related quick question (generic)
+        if any(w in low for w in psu_triggers_quick):
+            recs.append({"id": "psu_howto", "text": "🔌 How to choose a PSU",
+                        "action_query": "How to choose a PSU for my build?"})
+            recs.append({"id": "psu_calc", "text": "⚡ Calculate PSU for my CPU+GPU",
+                        "action_query": "Estimate PSU for my CPU and GPU"})
+            return recs[:3]
+
+        # 5) Education fallback
+        if is_education_request(q):
+            recs.append({"id": "edu_builds", "text": "📚 Example builds (gaming vs productivity)",
+                        "action_query": "Show example builds for gaming and productivity"})
+            recs.append({"id": "edu_pcie", "text": "🔎 What is PCIe?",
+                        "action_query": "What is PCIe?"})
+            return recs[:2]
+
+        # default tiny helpful suggestions
+        recs.append({"id": "help_examples", "text": "💡 Example: 'Recommend a build for ₱40k'",
+                    "action_query": "Recommend a build for ₱40k"})
+        recs.append(
+            {"id": "list_cats", "text": "📦 Show available categories", "action_query": "List CPUs"})
+        return recs[:2]
+    except Exception:
+        return []
 
 
 # Local / Fallback Template Helpers
@@ -2396,10 +3033,25 @@ FOLLOWUP_TRIGGERS = [
 
 def needs_followup(user_text):
     """Return a followup question text if request is ambiguous, else None."""
+    if not user_text:
+        return None
     q = (user_text or "").lower()
-    # If user asks about compatibility but only mentions one item, ask which other part to compare
+
+    # If user explicitly asked to list/show parts, don't ask followups
+    if re.search(r'\b(list|show|give me|which (cpus|gpus|motherboards)|available)\b', q):
+        return None
+
+    # If the query includes a socket (am4/am5/lgaXXXX) or an explicit motherboard model,
+    # we should not ask "which other component?" because the user already specified target.
+    if re.search(r'\b(am4|am5|lga\d{3,4})\b', q):
+        return None
+    # detect common mobo keywords/models roughly (e.g., b550, x570, h610, tuf, pro, msi, gigabyte)
+    if re.search(r'\b(b\d{3}|x\d{3}|h\d{3}|b\d{2}0|b550|x570|h610|b460|b660|asus|msi|gigabyte|tuf|pro|taichi)\b', q):
+        return None
+
+    # If user asks about compatibility but only mentions one item (and didn't include socket/mobo),
+    # ask which other part to compare
     if any(w in q for w in FOLLOWUP_TRIGGERS):
-        # crude check: count how many component-like tokens present (model numbers, known keys)
         found_count = 0
         for cat, items in data.items():
             for key, info in items.items():
@@ -2407,66 +3059,103 @@ def needs_followup(user_text):
                 if keytok in q or (info.get("name") or "").lower() in q:
                     found_count += 1
         if found_count < 2:
-            # ask which other component they mean
             return "Which other component do you want to check compatibility with? (e.g., a motherboard or GPU name)"
     # For build requests without budget, ask budget
     if is_build_request(q) and not parse_budget_from_text(q):
-        # only ask if they didn't already mention a tier
         if not any(t in q for t in ["budget", "entry", "mid", "high", "₱", "php", "k"]):
             return "What's your budget or which tier do you want? (e.g., ₱25k, entry-level, mid-range)"
     return None
-
 
 # Gemini API Wrapper
 # -------------------------------
 # 💬 Ask Gemini
 # -------------------------------
+# ----------------------------
+# 🤖 Gemini fallback mechanism
+# ----------------------------
+
+
+# --- Unified logger (configured only once) ---
+logger = logging.getLogger("ARsemble_ai")
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stderr)
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s"
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 
 def ask_gemini(user_query, found_data):
     """
-    Send user question to Gemini and intelligently limit the response to relevant specs.
-
-    - If the user asks for specific fields (socket, price, tdp, etc.) only those values are requested.
-    - Otherwise ask for full structured specs.
-    - Retries up to 3 times on transient failures.
-    - Sanitizes, deduplicates, and formats Gemini's reply into simple bullets.
-    - Prints the final formatted text and returns it (or None on failure).
+    Send user question to Gemini (if available) and return a single cleaned text string.
+    On any failure or when client is missing, return a local fallback string.
     """
-    # Ensure client exists and is initialized
-    if not client:
-        raise RuntimeError(
-            "Gemini client not found. Make sure `client = genai.Client(...)` is defined.")
+    try:
+        # Local fallback if no client configured
+        if not client:
+            print("⚠️ Gemini is disabled or API key missing. Using local fallback.")
+            if found_data:
+                out_lines = [
+                    "⚠️ Gemini unavailable — showing local data instead:", "-" * 40]
+                if isinstance(found_data, dict):
+                    for cat, info in found_data.items():
+                        if isinstance(info, dict) and "name" in info:
+                            name = info.get("name")
+                            price = info.get("price", "N/A")
+                            keys = [k for k in (
+                                "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
+                            specs = " • ".join(
+                                [f"{k}: {info[k]}" for k in keys])
+                            out_lines.append(f"- {name} — {specs} — {price}")
+                        elif isinstance(info, dict):
+                            for subk, subinfo in info.items():
+                                if isinstance(subinfo, dict):
+                                    name = subinfo.get("name", subk)
+                                    price = subinfo.get("price", "N/A")
+                                    keys = [k for k in (
+                                        "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in subinfo]
+                                    specs = " • ".join(
+                                        [f"{k}: {subinfo[k]}" for k in keys])
+                                    out_lines.append(
+                                        f"- {name} — {specs} — {price}")
+                final_text = "\n".join(out_lines + ["-" * 40])
+                print("\n🤖 ARIA says:\n")
+                print(final_text + "\n")
+                print("-" * 60 + "\n")
+                return final_text
+            else:
+                final_text = "❌ Gemini is unavailable and no local data to show."
+                print(final_text + "\n")
+                return final_text
 
-    context = json.dumps(found_data or {}, indent=2, ensure_ascii=False)
+        # Build prompt & context
+        context = json.dumps(found_data or {}, indent=2, ensure_ascii=False)
+        keywords = [
+            "socket", "price", "tdp", "power", "clock", "speed", "cores",
+            "threads", "igpu", "graphics", "compatibility", "ram type",
+            "form factor", "wattage", "efficiency", "capacity", "interface", "vram"
+        ]
+        matched_keywords = [
+            kw for kw in keywords if kw in (user_query or "").lower()]
 
-    # keywords that indicate the user only wants a specific detail
-    keywords = [
-        "socket", "price", "tdp", "power", "clock", "speed", "cores",
-        "threads", "igpu", "graphics", "compatibility", "ram type",
-        "form factor", "wattage", "efficiency", "capacity", "interface", "vram"
-    ]
-    matched_keywords = [
-        kw for kw in keywords if kw in (user_query or "").lower()]
+        if matched_keywords:
+            focus = ", ".join(matched_keywords)
+            query_mode = (f"The user only wants information about: {focus}.\n"
+                          "Check the provided JSON and extract the exact value(s) for those attributes.\n"
+                          "If a key exists, return only its value(s).\n"
+                          "If a key doesn't exist, respond exactly: \"This information is missing in the local database.\"")
+        else:
+            query_mode = "The user wants full details about the component. Provide full structured specs."
 
-    if matched_keywords:
-        focus = ", ".join(matched_keywords)
-        query_mode = f"""The user only wants information about: {focus}.
-Check the provided JSON and extract the exact value(s) for those attributes.
-If a key exists, return only its value(s).
-If a key doesn't exist, respond exactly: "This information is missing in the local database."""
+        system_header = (
+            "You are ARIA, a helpful PC component assistant. ONLY use the JSON data provided below. "
+            "Do not invent or guess values. If a requested key is missing, respond exactly: "
+            "\"This information is missing in the local database.\""
+        )
 
-    else:
-        query_mode = "The user wants full details about the component. Provide full structured specs."
-
-    # Build prompt
-    system_header = (
-        "You are ARIA, a helpful PC component assistant. ONLY use the JSON data provided below. "
-        "Do not invent or guess values. If a requested key is missing, respond exactly: "
-        "\"This information is missing in the local database.\""
-    )
-
-    prompt = f"""{system_header}
+        prompt = f"""{system_header}
 
 Available Data:
 {context}
@@ -2500,148 +3189,167 @@ Component Name
 
 End response.
 """
+        # Attempt call with limited retries (Gemini may be busy)
+        max_attempts = 3
+        backoff = 2
+        last_error = None
 
-    max_attempts = 3
-    backoff = 2
-    last_error = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash", contents=prompt)
 
-    for attempt in range(1, max_attempts + 1):
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
-            )
+                # Extract textual content robustly
+                text = None
+                if hasattr(response, "text") and response.text:
+                    text = response.text
+                elif hasattr(response, "output") and getattr(response, "output"):
+                    out = getattr(response, "output")
+                    if isinstance(out, str):
+                        text = out
+                    elif isinstance(out, (list, tuple)) and len(out) > 0:
+                        text = " ".join(map(str, out))
+                    else:
+                        text = str(out)
 
-            # Extract text from response safely
-            text = None
-            if hasattr(response, "text") and response.text:
-                text = response.text
-            elif hasattr(response, "output") and getattr(response, "output"):
-                out = getattr(response, "output")
-                if isinstance(out, str):
-                    text = out
-                elif isinstance(out, (list, tuple)) and len(out) > 0:
-                    text = " ".join(map(str, out))
+                if not text or not str(text).strip():
+                    raise ValueError("Empty response from Gemini")
+
+                # Clean and normalize text
+                text = str(text).strip()
+                text = re.sub(r'[`*_]{1,}', '', text)
+                text = re.sub(r'\n{3,}', '\n\n', text)
+                text = re.sub(r'[ \t]{2,}', ' ', text)
+
+                raw_lines = [ln.strip()
+                             for ln in text.splitlines() if ln.strip()]
+
+                normalized = []
+                for ln in raw_lines:
+                    if re.match(r'^[\-\u2022]\s+', ln):
+                        content = re.sub(r'^[\-\u2022]\s+', '', ln)
+                        normalized.append(f"• {content}")
+                    elif ':' in ln and len(ln.split(':', 1)[0].split()) < 6:
+                        parts = ln.split(':', 1)
+                        label = parts[0].strip()
+                        val = parts[1].strip()
+                        normalized.append(f"• {label}: {val}")
+                    else:
+                        normalized.append(ln)
+
+                # Deduplicate adjacent repeated lines
+                deduped = []
+                prev = None
+                for ln in normalized:
+                    if ln == prev:
+                        continue
+                    deduped.append(ln)
+                    prev = ln
+
+                # Collapse repeated blocks
+                final_lines = []
+                seen_blocks = set()
+                para = []
+                for ln in deduped + [""]:
+                    if ln == "":
+                        if para:
+                            block = "\n".join(para)
+                            if block not in seen_blocks:
+                                final_lines.extend(para)
+                                final_lines.append("")  # paragraph separator
+                                seen_blocks.add(block)
+                            para = []
+                    else:
+                        para.append(ln)
+
+                if final_lines and final_lines[-1] == "":
+                    final_lines = final_lines[:-1]
+
+                # Final assembled text
+                if final_lines:
+                    final_text = "\n".join(final_lines).strip()
                 else:
-                    text = str(out)
+                    final_text = text.strip() if text else "No content returned from Gemini."
 
-            if not text:
-                raise ValueError("Empty response from Gemini")
+                # Print & return
+                print("\n🤖 ARIA says:\n")
+                print(final_text + "\n")
+                print("-" * 60 + "\n")
+                return final_text
 
-            # Basic sanitization
-            text = text.strip()
-
-            # Remove excessive markdown characters or triple repeats
-            text = re.sub(r'[`*_]{1,}', '', text)               # remove ` * _
-            # collapse multiple blank lines
-            text = re.sub(r'\n{3,}', '\n\n', text)
-            # collapse multi-space
-            text = re.sub(r'[ \t]{2,}', ' ', text)
-
-            # Split to lines and normalize bullets
-            raw_lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-
-            # Convert lines like "Key: Value" into "• Key: Value" and keep existing bullets
-            normalized = []
-            for ln in raw_lines:
-                if re.match(r'^[\-\u2022]\s+', ln):
-                    content = re.sub(r'^[\-\u2022]\s+', '', ln)
-                    normalized.append(f"• {content}")
-                elif ':' in ln and len(ln.split(':', 1)[0].split()) < 6:
-                    parts = ln.split(':', 1)
-                    label = parts[0].strip()
-                    val = parts[1].strip()
-                    normalized.append(f"• {label}: {val}")
-                else:
-                    normalized.append(ln)
-
-            # Deduplicate adjacent repeated lines (common model repetition bug)
-            deduped = []
-            prev = None
-            for ln in normalized:
-                if ln == prev:
-                    continue
-                deduped.append(ln)
-                prev = ln
-
-            # Further de-duplicate by collapsing repeated blocks (if the entire block repeats)
-            final_lines = []
-            seen_blocks = set()
-            para = []
-            for ln in deduped + [""]:
-                if ln == "":
-                    if para:
-                        block = "\n".join(para)
-                        if block not in seen_blocks:
-                            final_lines.extend(para)
-                            final_lines.append("")  # paragraph separator
-                            seen_blocks.add(block)
-                        para = []
-                else:
-                    para.append(ln)
-
-            if final_lines and final_lines[-1] == "":
-                final_lines = final_lines[:-1]
-
-            formatted_text = "\n".join(final_lines)
-
-            # Print and return
-            print("\n🤖 ARIA says:\n")
-            print(formatted_text + "\n")
-            print("-" * 60 + "\n")
-            return formatted_text
-
-        except Exception as e:
-            last_error = e
-            # Retry on transient errors (server overload or similar)
-            err_str = str(e).lower()
-            if "503" in err_str or "overload" in err_str or "busy" in err_str:
-                if attempt < max_attempts:
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                if any(tok in err_str for tok in ("503", "overload", "busy", "timeout")) and attempt < max_attempts:
                     print(
                         f"⚠️ Gemini server busy (attempt {attempt}/{max_attempts}). Retrying in {backoff}s...")
                     time.sleep(backoff)
                     backoff *= 2
                     continue
-                else:
-                    print(
-                        "❌ Gemini is currently overloaded. Attempting local fallback...\n")
-                    break
-            else:
-                print(f"⚠️ Error while calling Gemini: {e}\n")
-                return None
+                # non-transient or last attempt -> log and break to fallback
+                print(f"[ARsemble_ai] Gemini error: {e}")
+                break
 
-    # If we get here, all attempts failed — provide a fallback using found_data
-    if client is None:
-        print("⚠️ Gemini is disabled or API key missing. Using local fallback.")
-        # same fallback logic you already have at the bottom — return that result now
+        # If we reach here, Gemini failed — provide local fallback if possible
         if found_data:
             out_lines = [
-                "⚠️ Gemini unavailable — showing local data instead:", "-" * 40]
-            for cat, info in (found_data.items() if isinstance(found_data, dict) else []):
-                if isinstance(info, dict):
-                    if "name" in info:
+                "⚠️ Gemini error, fallback used. Showing local data instead:", "-" * 40]
+            if isinstance(found_data, dict):
+                for cat, info in found_data.items():
+                    if isinstance(info, dict) and "name" in info:
                         name = info.get("name")
                         price = info.get("price", "N/A")
                         keys = [k for k in (
                             "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
                         specs = " • ".join([f"{k}: {info[k]}" for k in keys])
                         out_lines.append(f"- {name} — {specs} — {price}")
-                    else:
+                    elif isinstance(info, dict):
                         for subk, subinfo in info.items():
-                            name = subinfo.get("name", subk)
-                            price = subinfo.get("price", "N/A")
-                            keys = [k for k in (
-                                "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in subinfo]
-                            specs = " • ".join(
-                                [f"{k}: {subinfo[k]}" for k in keys])
-                            out_lines.append(f"- {name} — {specs} — {price}")
-            out_lines.append("-" * 40)
-            final = "\n".join(out_lines)
-            print(final + "\n")
-            return final
+                            if isinstance(subinfo, dict):
+                                name = subinfo.get("name", subk)
+                                price = subinfo.get("price", "N/A")
+                                keys = [k for k in (
+                                    "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in subinfo]
+                                specs = " • ".join(
+                                    [f"{k}: {subinfo[k]}" for k in keys])
+                                out_lines.append(
+                                    f"- {name} — {specs} — {price}")
+            fallback_text = "\n".join(out_lines + ["-" * 40])
+            print("\n" + fallback_text + "\n")
+            return fallback_text
         else:
-            print("❌ Gemini is unavailable and no local data to show.\n")
-            return None
+            fallback_text = "❌ Gemini failed and no local data available."
+            print(fallback_text + "\n")
+            return fallback_text
+
+    except Exception as outer_e:
+        print(f"[ARsemble_ai] Unexpected error in ask_gemini: {outer_e}")
+        return "⚠️ An unexpected error occurred while fetching component info."
+
+
+# --- Gemini fallback wrapper ---
+# ---------- gemini_fallback helper ----------
+def gemini_fallback(user_query: str, found_data: dict, max_retries: int = 2) -> str:
+    """
+    Calls ask_gemini() safely with retries and returns a cleaned reply string.
+    Returns text or None on failure.
+    """
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            text = ask_gemini(user_query, found_data)
+            if not text:
+                raise RuntimeError("Empty Gemini response")
+            text = re.sub(r"\n{3,}", "\n\n", text).strip()
+            return text
+        except Exception as e:
+            last_err = e
+            time.sleep(0.6 * (2 ** (attempt - 1)))
+            continue
+    logger.warning(
+        f"[gemini_fallback] failed after {max_retries} attempts: {last_err}")
+    return None
+
 
 # Word Matching Utilities (used across intents)
 
@@ -2659,54 +3367,216 @@ psu_triggers_quick = ["psu", "power supply", "power recommendation", "watt",
                       "wattage", "power draw", "how much watt", "how much wattage"]
 
 
-def handle_query(user_input: str) -> str:
+# inside ARsemble_ai.py (replace the handle_query function)
+# Main server-friendly handler (returns JSON string)
+# ---------- Main handle_query (replace your old handle_query) ----------
+def handle_feature_list(user_query: str):
     """
-    Server-friendly single-turn entry point.
-    Captures whatever the CLI-style handlers print and returns it as a string.
-    This avoids changing existing print-based handlers.
+    Handles queries like:
+      - Which GPUs use PCIe 4.0?
+      - Which motherboards support PCIe 5.0?
+    Prints a short list (up to 6) from local DB.
     """
-    buffer = io.StringIO()
-    with contextlib.redirect_stdout(buffer):
-        try:
-            if not user_input or user_input.strip() == "":
-                print("No input provided.")
-            else:
-                low = user_input.lower().strip()
+    q = (user_query or "").lower()
+    cat = None
+    for c in ("gpu", "gpus", "graphics", "motherboard", "mobos", "cpu", "cpus"):
+        if re.search(r'\b' + re.escape(c) + r'\b', q):
+            if "gpu" in c:
+                cat = "gpu"
+            elif "mobo" in c or "mother" in c:
+                cat = "motherboard"
+            elif "cpu" in c:
+                cat = "cpu"
+            break
+    mver = re.search(r'\bpcie\s*([45](?:\.0)?)\b', q)
+    version_token = "pcie " + mver.group(1) if mver else None
+    if not cat:
+        cat = "gpu"
 
-                # Educational request? (uses existing handler that prints)
-                if is_education_request(user_input):
-                    handle_education_request(user_input)
+    items = data.get(cat, {}) or {}
+    results = []
+    for key, info in items.items():
+        if info_matches_pcie(info, version_token):
+            name = info.get("name", key)
+            price = info.get("price", "N/A")
+            note = ""
+            for fk in ("slot", "compatibility", "notes"):
+                v = (info.get(fk) or "")
+                if isinstance(v, str) and "pcie" in v.lower():
+                    note = v
+                    break
+            results.append((name, price, note))
+
+    if not results:
+        print(
+            f"\n🤖 ARIA says:\nNo {cat.upper()} found using {version_token.upper() if version_token else 'PCIe'} in the local database.\n")
+        return
+
+    print(
+        f"\n🤖 ARIA — {cat.upper()} supporting {(version_token or 'PCIe').upper()}:\n")
+    for name, price, note in results[:6]:
+        line = f"• {name} — {price}"
+        if note:
+            line += f" — {note}"
+        print(line)
+    print("\nTip: tap a recommendation to see details or get PSU estimates for any GPU.\n")
+
+
+# 3
+def handle_query(user_query: str, explicit_intent: Optional[str] = None, request_id: Optional[str] = None):
+    """
+    Robust handler that guarantees a non-empty 'response' when there are recommendations.
+    Returns: {"response": str, "recommendations": [...], "sections": [...]}
+    Uses cache if request_id supplied.
+    """
+    # return cached if processed
+    cached = cache_get(request_id)
+    if cached is not None:
+        logger.info("Returning cached response for request_id=%s", request_id)
+        return cached
+
+    try:
+        q = (user_query or "").strip()
+        low = q.lower()
+        response_text = ""
+        recommendations = []
+        sections = []
+        seen_section_keys = set()
+        intent = explicit_intent or None
+        sub_intent = None
+
+        # QUICK RULES (prioritized)
+        if re.search(r'^\s*what\s+is\s+pcie\s*\?*$', low) or re.search(r'\bwhat\s+is\s+pcie\b', low):
+            intent = "education"
+            sub_intent = None
+        elif re.search(r'which\s+gpus?.*pcie', low) or re.search(r'which.*pcie\s*4', low):
+            intent = "education"
+            sub_intent = "list_pcie_gpus"
+
+        # FALLBACK KEYWORD DETECTION IF STILL NONE
+        if intent is None:
+            if re.search(r'\b(cpu|ryzen|intel core|core i|rtx|gtx)\b', low):
+                intent = "component"
+            elif re.search(r'\b(motherboard|mobo|socket|am4|am5|lga)\b', low):
+                intent = "component"
+            elif re.search(r'\b(psu|power supply|wattage|watt)\b', low):
+                intent = "psu"
+            elif re.search(r'\b(build|recommend a build|budget)\b', low):
+                intent = "build"
+            elif re.search(r'\b(compare|vs|benchmarks)\b', low):
+                intent = "compare"
+            elif re.search(r'\b(pcie)\b', low):
+                intent = "education"
+            else:
+                intent = "component"  # try component first
+
+        logger.info("handle_query: detected intent=%s sub_intent=%s for q=%s",
+                    intent, sub_intent, q[:120])
+
+        # INTENT HANDLING (mutually exclusive)
+        if intent == "education":
+            if sub_intent == "list_pcie_gpus":
+                build_gpu_support_list = globals().get("build_gpu_support_list")
+                gpu_text = _safe_call(
+                    build_gpu_support_list, only_pcie4=True, default=None)
+                if gpu_text:
+                    response_text = f"Which GPUs use PCIe 4.0?\n\n{gpu_text}"
                 else:
-                    # Try component lookup
-                    matches = find_component(user_input)
-                    if matches:
-                        category, info, component_key = matches[0]
-                        handled = False
-                        try:
-                            handled = respond_from_local(
-                                component_key, info, user_input)
-                        except Exception:
-                            handled = False
-                        if not handled:
-                            try:
-                                ask_gemini(user_input, {category: info})
-                            except Exception as e:
-                                name = info.get("name", component_key)
-                                price = info.get("price", "N/A")
-                                keys = [k for k in (
-                                    "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
-                                specs = " • ".join(
-                                    [f"{k}: {info[k]}" for k in keys])
-                                print(
-                                    f"\n🤖 ARIA says (local fallback):\n{name}\n{specs}\nPrice: {price}\n")
-                    elif contains_any(low, psu_triggers_quick):
-                        handle_psu_request(user_input)
-                    else:
-                        print(
-                            "I couldn't understand that. Try asking about a component (e.g., 'Ryzen 5 5600X') or say 'help'.")
-        except Exception as e:
-            print(f"Error handling query: {e}")
-    return buffer.getvalue()
+                    response_text = (
+                        "Which GPUs use PCIe 4.0?\n\n"
+                        "Examples include many modern mid- and high-end GPUs (e.g., RTX 3050/3060/4060 series). "
+                        "Tap the recommendation to see a curated list."
+                    )
+                recommendations = generate_quick_recommendations_intent(
+                    q, intent="education", sub_intent="list_pcie_gpus")
+                append_unique_section(sections, "tip_recommendations", {
+                                      "title": "Tip", "body": "Tap a recommendation to see details or get PSU estimates for any GPU."}, seen_section_keys)
+            else:
+                response_text = (
+                    "🔎 Understanding PCIe Slots\n\n"
+                    "PCI Express (PCIe) connects GPUs, SSDs, and network cards to the motherboard. "
+                    "Each new generation doubles the data bandwidth. Higher versions (4.0, 5.0) are "
+                    "faster but backward compatible. A PCIe 4.0 GPU works fine in a PCIe 3.0 slot."
+                )
+                recommendations = generate_quick_recommendations_intent(
+                    q, intent="education")
+
+        elif intent == "component":
+            find_component = globals().get("find_component")
+            comps = _safe_call(find_component, q, default=[]) or []
+            if not comps:
+                response_text = "I couldn't find a matching component. Try a specific model name like 'Ryzen 5 5600X'."
+                recommendations = []
+            else:
+                cat, info, key = comps[0]
+                name = info.get("name", key) if isinstance(info, dict) else key
+                short = (info.get("short") if isinstance(
+                    info, dict) else "") or ""
+                response_text = f"Here's what I found about {name} ({cat})."
+                recommendations = generate_quick_recommendations_intent(
+                    q, intent="component")
+
+        elif intent == "psu":
+            response_text = "🔌 Power supply help — choose a PSU based on TDP and GPU power draw."
+            recommendations = generate_quick_recommendations_intent(
+                q, intent="psu")
+
+        elif intent == "build":
+            parse_budget_from_text = globals().get("parse_budget_from_text")
+            budget = _safe_call(parse_budget_from_text, q, default=None)
+            if budget:
+                format_php = globals().get("format_php")
+                try:
+                    fmt_budget = format_php(budget) if callable(
+                        format_php) else f"₱{budget}"
+                except Exception:
+                    fmt_budget = f"₱{budget}"
+                response_text = f"Recommended builds around {fmt_budget} — pick a tier to see parts."
+            else:
+                response_text = "Tell me your budget (e.g. ₱25k) and I can recommend a build."
+            recommendations = generate_quick_recommendations_intent(
+                q, intent="build")
+
+        elif intent == "compare":
+            response_text = "Comparison tools — pick the parts you want to compare."
+            recommendations = generate_quick_recommendations_intent(
+                q, intent="compare")
+
+        else:
+            # safety fallback in case an unknown intent slips through
+            response_text = ""
+            recommendations = generate_quick_recommendations_intent(
+                q, intent=intent)
+
+        # IMPORTANT: ensure response_text is never empty if we have recommendations
+        if (not response_text or response_text.strip() == "") and recommendations:
+            # build a short default message based on intent
+            default_map = {
+                "education": "Here is some educational information and suggested actions.",
+                "component": "Here are some suggestions related to that component.",
+                "psu": "Here are PSU-related suggestions.",
+                "build": "Here are build suggestions and actions.",
+                "compare": "Here are comparison actions you can use.",
+            }
+            response_text = default_map.get(
+                intent, "Here are some suggestions.")
+
+        # final result object
+        result = {"response": response_text,
+                  "recommendations": recommendations, "sections": sections}
+
+        # cache and return
+        cache_set(request_id, result)
+        logger.info("handle_query: returning response (intent=%s) with %d recs",
+                    intent, len(recommendations))
+        return result
+
+    except Exception as e:
+        logger.exception("handle_query unexpected error: %s", e)
+        result = {"response": "Sorry, something went wrong while processing your query.",
+                  "recommendations": [], "sections": []}
+        cache_set(request_id, result)
+        return result
 
 
 # -------------------------------
@@ -2811,13 +3681,12 @@ def run_cli():
                 handled = False
                 print(f"⚠️ Local response error: {e}")
 
-            if handled:
-                continue
+                if not handled:
+                    try:
+                        ask_gemini(user_input, {category: info})
+                    except Exception as e:
+                        name = info.get("name", component_key)
 
-            # otherwise try Gemini (or local fallback)
-            try:
-                ask_gemini(user_input, {category: info})
-            except Exception as e:
                 # graceful fallback to local summary
                 print(f"⚠️ Error while querying Gemini: {e}\n")
                 try:
