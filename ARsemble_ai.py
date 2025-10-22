@@ -955,14 +955,30 @@ def is_education_request(user_input: str) -> bool:
 
 def handle_education_request(user_input: str):
     """
-    Handles conceptual or educational questions using Gemini.
-    e.g. 'What is PCIe?' or 'Difference between DDR4 and DDR5'
+    Handles conceptual or educational questions.
+    Uses local EDU_EXPLANATIONS first; only calls Gemini when client is available.
     """
     print("\n🤖 ARIA — Educational Answer:\n")
 
-    # guard against missing client
+    # Try local match first (fast, avoids Gemini)
+    local = explain_concept(user_input)
+    if local:
+        print(local + "\n" + "-" * 60 + "\n")
+        try:
+            add_to_history("assistant", local)
+        except Exception:
+            pass
+        return
+
+    # If no local explanation and Gemini client is available, use it.
     if client is None:
-        print("⚠️ Gemini is not available. Please set GEMINI_API_KEY.\n")
+        # graceful message when no local info + no Gemini
+        print("⚠️ I don't have a local explanation for that and Gemini is not available. Try rephrasing or enable GEMINI_API_KEY.\n")
+        try:
+            add_to_history(
+                "assistant", "No local explanation and Gemini disabled.")
+        except Exception:
+            pass
         return
 
     prompt = f"""
@@ -972,7 +988,7 @@ Explain the following concept clearly and concisely for a beginner PC builder.
 Question: {user_input}
 
 Rules:
-- Limit to 5 concise sentences.
+- Limit to 4-6 concise sentences.
 - Avoid jargon unless explained.
 - Do not use markdown symbols (#, **, ```).
 - Use bullet points if listing differences.
@@ -980,19 +996,50 @@ Rules:
 """
 
     try:
+        # Safe call — client must be non-None
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt
         )
 
-        # handle response text
+        # Extract text robustly
+        text = None
         if hasattr(response, "text") and response.text:
-            print(response.text.strip() + "\n")
-        else:
+            text = response.text
+        elif hasattr(response, "output") and getattr(response, "output"):
+            out = getattr(response, "output")
+            if isinstance(out, str):
+                text = out
+            elif isinstance(out, (list, tuple)):
+                text = " ".join(map(str, out))
+            else:
+                text = str(out)
+
+        if not text:
             print("⚠️ No response from Gemini.\n")
+            return
+
+        text = text.strip()
+        print(text + "\n" + "-" * 60 + "\n")
+        try:
+            add_to_history("assistant", text)
+        except Exception:
+            pass
 
     except Exception as e:
+        # On any Gemini error, fallback to a helpful message and local hints
         print(f"⚠️ Error while calling Gemini for educational question: {e}\n")
+        print("Here's a short local hint instead:\n")
+        fallback = explain_concept(user_input)
+        if fallback:
+            print(fallback + "\n" + "-" * 60 + "\n")
+        else:
+            print("I couldn't generate a full explanation. Try a simpler phrasing (e.g., 'What is PCIe?' or 'Explain DDR5 vs DDR4').\n")
+        try:
+            add_to_history(
+                "assistant", f"Gemini error + fallback for: {user_input}")
+        except Exception:
+            pass
 
 
 # -------------------------------
