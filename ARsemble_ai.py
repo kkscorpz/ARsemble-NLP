@@ -19,21 +19,17 @@ from pathlib import Path
 env_path = Path(".env")
 if env_path.exists():
     try:
-        load_dotenv()  # may raise on corrupted encoding; we catch that below
+        load_dotenv()
     except Exception as e:
         print("Warning: load_dotenv() failed (continuing). Error:",
               e, file=sys.stderr)
 
-# Use clear env var name(s)
-API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv(
-    "AIzaSyAPMnW1Hyjb_7LXcRwRwlWQLXfuy19ghaQ") or os.getenv("GEMINI_API")
+API_KEY = os.getenv("GEMINI_API_KEY")  # only this
 
-# Initialize client only if API key exists; else client stays None
 client = None
 if API_KEY:
     try:
         client = genai.Client(api_key=API_KEY)
-        # small debug line (do NOT log the full key in real logs)
         print("Gemini client initialized (API key present).", file=sys.stderr)
     except Exception as e:
         print("Warning: failed to initialize genai client:", e, file=sys.stderr)
