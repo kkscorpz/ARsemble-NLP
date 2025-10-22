@@ -26,7 +26,7 @@ if env_path.exists():
 
 # Use clear env var name(s)
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv(
-    "samplekey") or os.getenv("GEMINI_API")
+    "AIzaSyAPMnW1Hyjb_7LXcRwRwlWQLXfuy19ghaQ") or os.getenv("GEMINI_API")
 
 # Initialize client only if API key exists; else client stays None
 client = None
