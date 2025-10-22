@@ -2675,6 +2675,11 @@ if __name__ == "__main__":
     recommend_triggers = ["recommend a build", "build for", "suggest a build",
                           "pc build", "budget build", "recommend build", "suggest build"]
 
+if __name__ == "__main__":
+    print("🤖 ARIA YOUR ASSISTANT ")
+    print("Ask about any component (e.g. 'Ryzen 5 5600X', 'RTX 4060', 'MSI PRO X670-P WIFI').")
+    print("Type 'exit' to quit.\n")
+
 while True:
     try:
         user_input = input("You: ").strip()
