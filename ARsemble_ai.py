@@ -2655,6 +2655,60 @@ def contains_any(haystack, words):
     return any(contains_word(haystack, w) for w in words)
 
 
+psu_triggers_quick = ["psu", "power supply", "power recommendation", "watt",
+                      "wattage", "power draw", "how much watt", "how much wattage"]
+
+
+def handle_query(user_input: str) -> str:
+    """
+    Server-friendly single-turn entry point.
+    Captures whatever the CLI-style handlers print and returns it as a string.
+    This avoids changing existing print-based handlers.
+    """
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        try:
+            if not user_input or user_input.strip() == "":
+                print("No input provided.")
+            else:
+                low = user_input.lower().strip()
+
+                # Educational request? (uses existing handler that prints)
+                if is_education_request(user_input):
+                    handle_education_request(user_input)
+                else:
+                    # Try component lookup
+                    matches = find_component(user_input)
+                    if matches:
+                        category, info, component_key = matches[0]
+                        handled = False
+                        try:
+                            handled = respond_from_local(
+                                component_key, info, user_input)
+                        except Exception:
+                            handled = False
+                        if not handled:
+                            try:
+                                ask_gemini(user_input, {category: info})
+                            except Exception as e:
+                                name = info.get("name", component_key)
+                                price = info.get("price", "N/A")
+                                keys = [k for k in (
+                                    "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
+                                specs = " • ".join(
+                                    [f"{k}: {info[k]}" for k in keys])
+                                print(
+                                    f"\n🤖 ARIA says (local fallback):\n{name}\n{specs}\nPrice: {price}\n")
+                    elif contains_any(low, psu_triggers_quick):
+                        handle_psu_request(user_input)
+                    else:
+                        print(
+                            "I couldn't understand that. Try asking about a component (e.g., 'Ryzen 5 5600X') or say 'help'.")
+        except Exception as e:
+            print(f"Error handling query: {e}")
+    return buffer.getvalue()
+
+
 # -------------------------------
 # CLI runner (only when executed directly)
 # -------------------------------
