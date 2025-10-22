@@ -1,4 +1,3 @@
-
 import unicodedata
 import datetime
 import sys
@@ -7,17 +6,25 @@ import io
 import random
 import textwrap
 import json
-from google import genai
 import time
 import re
 import math
 import difflib
+from dotenv import load_dotenv
 
-# -------------------------------
-# 🔑 Gemini API Setup
-# -------------------------------
-# Replace with your Gemini API key
-client = genai.Client(api_key="AIzaSyAPMnW1Hyjb_7LXcRwRwlWQLXfuy19ghaQ")
+import os
+import google.genai as genai
+
+load_dotenv(encoding="utf-8-sig")
+
+GENAI_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GENAI_API_KEY")
+
+if not GENAI_API_KEY:
+    print("⚠️ GENAI API key not found. Set GOOGLE_API_KEY or GENAI_API_KEY in environment (.env or platform settings).")
+    client = None
+else:
+    client = genai.Client(api_key=GENAI_API_KEY)
+
 
 # -------------------------------
 # 📚 Local Component Database (paste your dataset here)
@@ -1748,7 +1755,7 @@ def respond_from_local(component_key, info, user_query):
                     "assistant", f"{component_name} • {label}: {val}")
             except Exception:
                 pass
-            return True
+        return True
 
     # 3) Try common DB keys (if alias keys differ)
     for alt in [requested_field, requested_field + "_type", requested_field + "_size"]:
