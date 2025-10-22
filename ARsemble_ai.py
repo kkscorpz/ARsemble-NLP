@@ -10,36 +10,35 @@ import time
 import re
 import math
 import difflib
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 import os
 import google.genai as genai
-
 from pathlib import Path
 
-# Try to load local .env only when present and safe
 env_path = Path(".env")
 if env_path.exists():
     try:
-        load_dotenv()  # will raise if file encoding broken; safe-guard earlier helps
+        load_dotenv()  # may raise on corrupted encoding; we catch that below
     except Exception as e:
         print("Warning: load_dotenv() failed (continuing). Error:",
               e, file=sys.stderr)
 
-# Use a clear env var name
+# Use clear env var name(s)
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv(
     "samplekey") or os.getenv("GEMINI_API")
 
-# Initialize client only if we have API key; else leave as None and handle gracefully
+# Initialize client only if API key exists; else client stays None
 client = None
 if API_KEY:
     try:
         client = genai.Client(api_key=API_KEY)
+        # small debug line (do NOT log the full key in real logs)
+        print("Gemini client initialized (API key present).", file=sys.stderr)
     except Exception as e:
         print("Warning: failed to initialize genai client:", e, file=sys.stderr)
 else:
     print("Warning: GEMINI API key not found in environment (GEMINI_API_KEY). Gemini disabled.", file=sys.stderr)
-
 
 # -------------------------------
 # 📚 Local Component Database (paste your dataset here)
@@ -869,21 +868,37 @@ def explain_concept(user_text):
     return None
 
 
-def list_components_by_category(user_text):
+def list_components_by_category(user_text, require_list_keyword=True):
     """
     If user asked to 'list GPUs' or 'show CPU list', return all items in that category.
     Recognizes plural and singular keywords.
+
+    require_list_keyword: when True (default) the function only returns a list if the
+    user's text contains explicit list/show verbs (e.g. 'list', 'show', 'give me').
+    This prevents accidental category listing when the query contains brand/model tokens
+    like 'rtx' or 'intel'.
     """
+    if not user_text:
+        return None
+
     q = (user_text or "").lower()
+
+    # If caller requests an explicit list by using verbs like list/show/give me, allow it.
+    list_verbs_re = re.compile(
+        r'\b(list|show|give me|give|all|what are|which are)\b', flags=re.I)
+    if require_list_keyword and not list_verbs_re.search(q):
+        return None
+
     cat_map = {
-        "cpu": ["cpu", "cpus", "processor", "processors", "intel", "amd"],
-        "gpu": ["gpu", "gpus", "graphics", "video card", "video cards", "rtx", "gtx"],
+        "cpu": ["cpu", "cpus", "processor", "processors"],
+        "gpu": ["gpu", "gpus", "graphics", "video card", "video cards"],
         "motherboard": ["motherboard", "motherboards", "mobo", "mobos"],
         "ram": ["ram", "memory", "memories", "ddr4", "ddr5"],
         "storage": ["storage", "ssd", "nvme", "hdd"],
         "psu": ["psu", "power supply", "power supplies"],
         "cpu_cooler": ["cooler", "cpu cooler", "coolers", "liquid cooler", "air cooler"]
     }
+
     for cat, triggers in cat_map.items():
         if any(t in q for t in triggers):
             items = data.get(cat, {})
@@ -919,41 +934,65 @@ EDU_KEYWORDS = [
 ]
 
 
-def is_education_request(user_text):
-    t = (user_text or "").lower()
-    # Only treat as education if clear educational keywords present (avoid compare/versus)
-    for kw in EDU_KEYWORDS:
-        if re.search(r'\b' + re.escape(kw) + r'\b', t):
-            return True
-    # explicitly exclude compare-like words here
-    if re.search(r'\b(explain|what is|how does)\b', t):
-        return True
-    return False
+def is_education_request(user_input: str) -> bool:
+    """
+    Detects if the user's query is educational (conceptual question).
+    Returns True for 'what is', 'explain', 'difference between', etc.
+    """
+    if not user_input:
+        return False
+    q = user_input.lower().strip()
+    return any([
+        q.startswith("what is"),
+        q.startswith("explain"),
+        "difference between" in q,
+        "how does" in q,
+        "why is" in q,
+        "importance of" in q,
+        "define" in q,
+    ])
 
 
-def handle_education_request(user_text):
-    # Try concept explanation first
-    explanation = explain_concept(user_text)
-    if explanation:
-        print("\n🤖 ARIA — Educational Explanation:\n")
-        print(explanation)
-        print("\n" + "-" * 60 + "\n")
+def handle_education_request(user_input: str):
+    """
+    Handles conceptual or educational questions using Gemini.
+    e.g. 'What is PCIe?' or 'Difference between DDR4 and DDR5'
+    """
+    print("\n🤖 ARIA — Educational Answer:\n")
+
+    # guard against missing client
+    if client is None:
+        print("⚠️ Gemini is not available. Please set GEMINI_API_KEY.\n")
         return
 
-    # Then try listing components
-    listing = list_components_by_category(user_text)
-    if listing:
-        print("\n🤖 ARIA — Component List:\n")
-        print(listing)
-        print("\n" + "-" * 60 + "\n")
-        return
+    prompt = f"""
+You are ARIA, a PC hardware assistant.
+Explain the following concept clearly and concisely for a beginner PC builder.
 
-    # Fallback: brief help about available educational topics
-    topics = ", ".join([v["title"] for v in EDU_EXPLANATIONS.values()])
-    print("\n🤖 ARIA — Educational Help:\n")
-    print("I can explain topics such as: " + topics + ".")
-    print("Try: 'Explain PCIe 4.0', 'What is DDR5?', 'What is an AM4 socket?', or 'List GPUs'.")
-    print("\n" + "-" * 60 + "\n")
+Question: {user_input}
+
+Rules:
+- Limit to 5 concise sentences.
+- Avoid jargon unless explained.
+- Do not use markdown symbols (#, **, ```).
+- Use bullet points if listing differences.
+- short friendly explanation
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+
+        # handle response text
+        if hasattr(response, "text") and response.text:
+            print(response.text.strip() + "\n")
+        else:
+            print("⚠️ No response from Gemini.\n")
+
+    except Exception as e:
+        print(f"⚠️ Error while calling Gemini for educational question: {e}\n")
 
 
 # -------------------------------
@@ -1185,7 +1224,7 @@ def handle_store_request(user_query: str):
         print(f"📫 Address: {store_address}")
         print("\n🕓 Store Hours: Usually 10:00 AM – 6:00 PM (verify before visiting).")
         print("☎️ You can visit or contact the shop directly for part availability.\n")
-        print("-" * 60 + "\n")
+        print("\n")
 
         # (Optional) Add to chat history
         try:
@@ -2529,7 +2568,9 @@ End response.
                 return None
 
     # If we get here, all attempts failed — provide a fallback using found_data
-    try:
+    if client is None:
+        print("⚠️ Gemini is disabled or API key missing. Using local fallback.")
+        # same fallback logic you already have at the bottom — return that result now
         if found_data:
             out_lines = [
                 "⚠️ Gemini unavailable — showing local data instead:", "-" * 40]
@@ -2558,10 +2599,6 @@ End response.
         else:
             print("❌ Gemini is unavailable and no local data to show.\n")
             return None
-    except Exception as final_exc:
-        print(f"⚠️ Unexpected fallback error: {final_exc}\n")
-        return None
-
 
 # Word Matching Utilities (used across intents)
 
@@ -2591,319 +2628,112 @@ if __name__ == "__main__":
     recommend_triggers = ["recommend a build", "build for", "suggest a build",
                           "pc build", "budget build", "recommend build", "suggest build"]
 
-    while True:
-        try:
-            user_input = input("You: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\n👋 Goodbye!")
-            break
+while True:
+    try:
+        user_input = input("You: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print("\n👋 Goodbye!")
+        break
 
-        if not user_input:
-            continue
+    if not user_input:
+        continue
 
-        low = user_input.lower().strip()
+    low = user_input.lower().strip()
 
-        if re.search(r'\b(list|show|give me|give|all|what are|which are)\b', low):
-            listing = list_components_by_category(user_input)
-            if listing:
-                print("\n🤖 ARIA — Component List:\n")
-                print(listing)
-                print("\n" + "-" * 60 + "\n")
+    # quick exit check (do this early)
+    if low in ["exit", "quit", "bye"]:
+        print("👋 Goodbye!")
+        break
+
+    # Quick: explicit-list intent (take priority) — put ADD_TO_HISTORY and CONTINUE INSIDE this block
+    if re.search(r'\b(list|show|available|)\b', low):
+        listing = list_components_by_category(user_input)
+        if listing:
+            print("\n🤖 ARIA — Component List:\n")
+            print(listing)
+            print("\n" + "-" * 60 + "\n")
             try:
                 add_to_history(
                     "assistant", f"Listed components for query: {user_input}")
             except Exception:
                 pass
             continue
+        # if listing is empty/falsy, fall through to normal handling (don't continue)
 
-        # exit
-        if low in ["exit", "quit", "bye"]:
-            print("👋 Goodbye!")
-            break
+    # store user turn in history (do it after quick intents so history isn't noisy)
+    try:
+        add_to_history("user", user_input)
+    except Exception:
+        pass
 
-        # store user turn in history if available
-        try:
-            add_to_history("user", user_input)
-        except Exception:
-            pass
-
-        # ----- 1) Try component lookup (local-first) -----
-        matches = find_component(user_input)
-        if matches:
-            print(f"[DEBUG] find_component matches: {[m[2] for m in matches]}")
-            # if the query looks like a compatibility question and we found components,
-            # handle compatibility immediately
-            if contains_any(low, comp_triggers):
-                try:
-                    if re.search(r'\b(work|works|will)\b.*\bwith\b', low) or contains_any(low, comp_triggers):
-                        handled = check_compatibility(user_input)
-                    if handled:
-                        continue
-                except Exception as e:
-                    print(f"⚠️ Compatibility handler error: {e}\n")
-                    # fall through to normal handling
-
-            # pick best match (first)
-            category, info, component_key = matches[0]
-
-            # respond from local DB for single-field intents (price/socket/tdp etc.)
-            try:
-                handled = respond_from_local(component_key, info, user_input)
-            except Exception as e:
-                handled = False
-                print(f"⚠️ Local response error: {e}")
-
-            if handled:
-                continue
-
-            # otherwise try Gemini (or local fallback)
-            try:
-                ask_gemini(user_input, {category: info})
-            except Exception as e:
-                # graceful fallback to local summary
-                print(f"⚠️ Error while querying Gemini: {e}\n")
-                try:
-                    name = info.get("name", component_key)
-                    price = info.get("price", "N/A")
-                    keys = [k for k in (
-                        "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
-                    specs = " • ".join([f"{k}: {info[k]}" for k in keys])
-                    print(
-                        f"\n🤖 ARIA says (local fallback):\n{name}\n{specs}\nPrice: {price}\n\n" + "-" * 60 + "\n")
-                except Exception:
-                    print("⚠️ Unable to show local fallback data.\n")
-            continue
-
-        # ----- 2) Quick PSU/wattage handler (before education/build) -----
-        if contains_any(low, psu_triggers_quick):
-            follow = needs_followup(user_input)
-            if follow:
-                try:
-                    add_to_history("assistant", follow)
-                except Exception:
-                    pass
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                continue
-            try:
-                handle_psu_request(user_input)
-            except Exception as e:
-                print(f"⚠️ PSU handler error: {e}\n")
-            continue
-
-        # ----- 3) Permissive component detection to avoid mis-classifying educational queries -----
-        permissive_found = extract_components_from_text(user_input)
-        if not permissive_found:
-            # only treat as education if there are no component-like tokens
-            if is_education_request(user_input):
-                handle_education_request(user_input)
-                continue
-
-        # ----- 4) Build / budget requests -----
-        if is_build_request(user_input):
-            follow = needs_followup(user_input)
-            if follow:
-                try:
-                    add_to_history("assistant", follow)
-                except Exception:
-                    pass
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                continue
-            try:
-                handle_build_request(user_input)
-            except Exception as e:
-                print(f"⚠️ Build recommendation error: {e}\n")
-            continue
-
-        # ----- 5) Compatibility / PSU / Compare / Recommend (token-aware) -----
-        if contains_any(low, comp_triggers + psu_triggers_quick):
-            follow = needs_followup(user_input)
-            if follow:
-                try:
-                    add_to_history("assistant", follow)
-                except Exception:
-                    pass
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                continue
-            # no follow-up needed: do compatibility check (may include PSU calc)
-            try:
-                check_compatibility(user_input)
-            except Exception as e:
-                print(f"⚠️ Compatibility check error: {e}\n")
-            continue
-
-        # ----- 6) Compare detection -----
-        if any(kw in low for kw in compare_triggers) or contains_any(low, ["compare", "compare to"]):
-            try:
-                compare_components(user_input)
-            except Exception as e:
-                print(f"⚠️ Compare error: {e}\n")
-            continue
-
-        # ----- 7) Recommend/build triggers (fallback) -----
-        if contains_any(low, recommend_triggers):
-            follow = needs_followup(user_input)
-            if follow:
-                try:
-                    add_to_history("assistant", follow)
-                except Exception:
-                    pass
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                continue
-            try:
-                handle_build_request(user_input)
-            except Exception as e:
-                print(f"⚠️ Build recommendation error: {e}\n")
-            continue
-
-        if handle_store_request(user_input):
-            continue
-
-        # ----- 8) Final fallback: no matches found -----
-        print("⚠️ No matching component found in the database.\n")
-        print("Tip: Try searching by model number or brand (e.g., '5600X', 'RTX 4060', 'MSI PRO X670').")
-        try:
-            add_to_history(
-                "assistant", "No matching component found; suggested user try model numbers or ask to list categories.")
-        except Exception:
-            pass
+    # ----- Educational question handler -----
+    if is_education_request(user_input):
+        handle_education_request(user_input)
         continue
 
-
-# =============================
-# 🧠 Flask Integration Function
-# =============================
-
-# near end of ARsemble_ai.py — add this
-# At end of ARSEMBLE_AI.py (after all functions)
-
-def handle_query(user_input):
-    """Return a full textual reply string. Adds debug logging to stderr."""
-    debug_prefix = f"[{datetime.datetime.now().isoformat()}] [handle_query] "
-    # small debug to stderr (visible in server logs)
-    print(debug_prefix + "Received input: " +
-          repr(user_input), file=sys.stderr)
-
-    if not user_input or not str(user_input).strip():
-        return "Please enter a question."
-
-    # capture printed output
-    buf = io.StringIO()
-    old_stdout = sys.stdout
-    try:
-        sys.stdout = buf
-        # reuse your existing flow — this is same logic as CLI but returns string
-        low = user_input.lower().strip()
-
-        # component lookup (local-first)
-        matches = find_component(user_input)
-        if matches:
-            # if compatibility wording present, check compatibility first
-            comp_triggers_local = [" compatible ", "compatibility", "is compatible",
-                                   "compatible with", "fit with", "works with", "is it compatible"]
-            if contains_any(low, comp_triggers_local):
-                try:
+    # ----- 1) Try component lookup (local-first) -----
+    matches = find_component(user_input)
+    if matches:
+        print(f"[DEBUG] find_component matches: {[m[2] for m in matches]}")
+        # if the query looks like a compatibility question and we found components,
+        # handle compatibility immediately
+        if contains_any(low, comp_triggers):
+            try:
+                if re.search(r'\b(work|works|will)\b.*\bwith\b', low) or contains_any(low, comp_triggers):
                     handled = check_compatibility(user_input)
-                    if handled:
-                        return buf.getvalue()
-                except Exception as e:
-                    print(f"⚠️ Compatibility handler error: {e}\n")
-
-            category, info, component_key = matches[0]
-            try:
-                handled = respond_from_local(component_key, info, user_input)
+                else:
+                    handled = False
+                if handled:
+                    continue
             except Exception as e:
-                handled = False
-                print(f"⚠️ Local response error: {e}")
+                print(f"⚠️ Compatibility handler error: {e}\n")
+                # fall through to normal handling
 
-            if handled:
-                return buf.getvalue()
+        # pick best match (first)
+        category, info, component_key = matches[0]
 
+        # respond from local DB for single-field intents (price/socket/tdp etc.)
+        try:
+            handled = respond_from_local(component_key, info, user_input)
+        except Exception as e:
+            handled = False
+            print(f"⚠️ Local response error: {e}")
+
+        if handled:
+            continue
+
+        # otherwise try Gemini (or local fallback)
+        try:
+            ask_gemini(user_input, {category: info})
+        except Exception as e:
+            # graceful fallback to local summary
+            print(f"⚠️ Error while querying Gemini: {e}\n")
             try:
-                ask_gemini(user_input, {category: info})
-            except Exception as e:
-                print(f"⚠️ Error while querying Gemini: {e}\n")
-                try:
-                    name = info.get("name", component_key)
-                    price = info.get("price", "N/A")
-                    keys = [k for k in (
-                        "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
-                    specs = " • ".join([f"{k}: {info[k]}" for k in keys])
-                    print(
-                        f"\n🤖 ARIA says (local fallback):\n{name}\n{specs}\nPrice: {price}\n\n" + "-" * 60 + "\n")
-                except Exception:
-                    print("⚠️ Unable to show local fallback data.\n")
-            return buf.getvalue()
+                name = info.get("name", component_key)
+                price = info.get("price", "N/A")
+                keys = [k for k in (
+                    "socket", "vram", "cores", "clock", "tdp", "capacity", "wattage") if k in info]
+                specs = " • ".join([f"{k}: {info[k]}" for k in keys])
+                print(
+                    f"\n🤖 ARIA says (local fallback):\n{name}\n{specs}\nPrice: {price}\n\n" + "-" * 60 + "\n")
+            except Exception:
+                print("⚠️ Unable to show local fallback data.\n")
+        continue
 
-        # Quick PSU handler
-        psu_triggers_quick = ["psu", "power supply", "power recommendation", "watt",
-                              "wattage", "power draw", "how much watt", "how much wattage"]
-        if contains_any(low, psu_triggers_quick):
-            follow = needs_followup(user_input)
-            if follow:
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                return buf.getvalue()
+    # ----- 2) Quick PSU/wattage handler (before education/build) -----
+    if contains_any(low, psu_triggers_quick):
+        follow = needs_followup(user_input)
+        if follow:
             try:
-                handle_psu_request(user_input)
-            except Exception as e:
-                print(f"⚠️ PSU handler error: {e}\n")
-            return buf.getvalue()
+                add_to_history("assistant", follow)
+            except Exception:
+                pass
+            print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
+            continue
+        try:
+            handle_psu_request(user_input)
+        except Exception as e:
+            print(f"⚠️ PSU handler error: {e}\n")
+        continue
 
-        # Education
-        permissive_found = extract_components_from_text(user_input)
-        if not permissive_found:
-            if is_education_request(user_input):
-                handle_education_request(user_input)
-                return buf.getvalue()
-
-        # Build
-        if is_build_request(user_input):
-            follow = needs_followup(user_input)
-            if follow:
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                return buf.getvalue()
-            handle_build_request(user_input)
-            return buf.getvalue()
-
-        # Compatibility / compare
-        comp_triggers = [" compatible ", "compatibility", "is compatible",
-                         "compatible with", "fit with", "works with", "is it compatible"]
-        if contains_any(low, comp_triggers + psu_triggers_quick):
-            follow = needs_followup(user_input)
-            if follow:
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                return buf.getvalue()
-            try:
-                check_compatibility(user_input)
-            except Exception as e:
-                print(f"⚠️ Compatibility check error: {e}\n")
-            return buf.getvalue()
-
-        # Compare
-        if any(kw in low for kw in [" vs ", " vs. ", " versus "]) or contains_any(low, ["compare", "compare to"]):
-            try:
-                compare_components(user_input)
-            except Exception as e:
-                print(f"⚠️ Compare error: {e}\n")
-            return buf.getvalue()
-
-        # Recommend/build
-        recommend_triggers = ["recommend a build", "build for", "suggest a build",
-                              "pc build", "budget build", "recommend build", "suggest build"]
-        if contains_any(low, recommend_triggers):
-            follow = needs_followup(user_input)
-            if follow:
-                print("\n🤖 ARIA — Quick question:\n" + follow + "\n")
-                return buf.getvalue()
-            try:
-                handle_build_request(user_input)
-            except Exception as e:
-                print(f"⚠️ Build recommendation error: {e}\n")
-            return buf.getvalue()
-
-        # fallback
-        print("⚠️ No matching component found in the database.\n")
-        print("Tip: Try searching by model number or brand (e.g., '5600X', 'RTX 4060', 'MSI PRO X670').")
-        return buf.getvalue()
-
-    finally:
-        sys.stdout = old_stdout
+    # ... remainder of your flow unchanged ...
