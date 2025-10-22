@@ -1,4 +1,7 @@
-__pycache__/
+__pycache__
+*.pyc
+build
+dist
 *.pyc
 *.pyo
 *.pyd
@@ -10,3 +13,4 @@ venv/
 .cache/
 .git/
 .gitignore
+
